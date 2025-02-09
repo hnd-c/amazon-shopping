@@ -15,6 +15,10 @@ from react_agent.configuration import Configuration
 from react_agent.state import InputState, State
 from react_agent.tools import TOOLS
 from react_agent.utils import load_chat_model
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Define the function that calls the model
 
@@ -33,49 +37,71 @@ async def call_model(
     Returns:
         dict: A dictionary containing the model's response message.
     """
-    configuration = Configuration.from_runnable_config(config)
+    try:
+        # Create a new Configuration instance with Supabase credentials
+        configuration = Configuration()
 
-    # Initialize the model with tool binding. Change the model or add more tools here.
-    model = load_chat_model(configuration.model).bind_tools(TOOLS)
+        # Add the configuration to the config dict so tools can access it
+        if "configurable" not in config:
+            config["configurable"] = {}
+        config["configurable"].update({
+            "supabase_url": configuration.supabase_url,
+            "supabase_key": configuration.supabase_key,
+            "model": configuration.model,
+            "system_prompt": configuration.system_prompt,
+        })
 
-    # Format the system prompt. Customize this to change the agent's behavior.
-    system_message = configuration.system_prompt.format(
-        system_time=datetime.now(tz=timezone.utc).isoformat()
-    )
+        logger.info(f"Configuration loaded with Supabase URL: {configuration.supabase_url[:8]}...")
 
-    # Get the model's response
-    response = cast(
-        AIMessage,
-        await model.ainvoke(
-            [{"role": "system", "content": system_message}, *state.messages], config
-        ),
-    )
+        # Initialize the model with tool binding
+        model = load_chat_model(configuration.model).bind_tools(TOOLS)
 
-    # Handle the case when it's the last step and the model still wants to use a tool
-    if state.is_last_step and response.tool_calls:
-        return {
-            "messages": [
-                AIMessage(
-                    id=response.id,
-                    content="Sorry, I could not find an answer to your question in the specified number of steps.",
-                )
-            ]
-        }
+        # Format the system prompt
+        system_message = configuration.system_prompt.format(
+            system_time=datetime.now(tz=timezone.utc).isoformat()
+        )
 
-    # Return the model's response as a list to be added to existing messages
-    return {"messages": [response]}
+        # Get the model's response
+        response = cast(
+            AIMessage,
+            await model.ainvoke(
+                [{"role": "system", "content": system_message}, *state.messages],
+                config
+            ),
+        )
+
+        # Handle the case when it's the last step and the model still wants to use a tool
+        if state.is_last_step and response.tool_calls:
+            return {
+                "messages": [
+                    AIMessage(
+                        id=response.id,
+                        content="Sorry, I could not find an answer to your question in the specified number of steps.",
+                    )
+                ]
+            }
+
+        return {"messages": [response]}
+
+    except Exception as e:
+        logger.error(f"Error in call_model: {str(e)}")
+        raise
 
 
 # Define a new graph
 
 builder = StateGraph(State, input=InputState, config_schema=Configuration)
 
-# Define the two nodes we will cycle between
-builder.add_node(call_model)
-builder.add_node("tools", ToolNode(TOOLS))
+# Create tool node with configuration
+tool_node = ToolNode(
+    TOOLS,  # Only pass the tools, remove the callbacks parameter
+)
 
-# Set the entrypoint as `call_model`
-# This means that this node is the first one called
+# Add nodes to the graph
+builder.add_node(call_model)
+builder.add_node("tools", tool_node)
+
+# Set the entrypoint
 builder.add_edge("__start__", "call_model")
 
 
@@ -120,4 +146,4 @@ graph = builder.compile(
     interrupt_before=[],  # Add node names here to update state before they're called
     interrupt_after=[],  # Add node names here to update state after they're called
 )
-graph.name = "ReAct Agent"  # This customizes the name in LangSmith
+graph.name = "Chemical Catalog Agent"  # This customizes the name in LangSmith
