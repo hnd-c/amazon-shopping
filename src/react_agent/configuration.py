@@ -55,7 +55,7 @@ def load_config() -> dict:
 
         # Inject environment variables
         config['supabase_url'] = os.environ.get('SUPABASE_URL', config.get('supabase_url', ''))
-        config['supabase_key'] = os.environ.get('SUPABASE_ANON_KEY', config.get('supabase_key', ''))
+        config['supabase_key'] = os.environ.get('SUPABASE_KEY', config.get('supabase_key', ''))
 
         return config
     except Exception as e:
