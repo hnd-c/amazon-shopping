@@ -120,6 +120,20 @@ async def get_statistics(
     db = SupabaseDB(configuration.supabase_url, configuration.supabase_key)
     return await db.get_product_statistics()
 
+async def get_chemical_details(
+    chemical_id: int,
+    *,
+    config: Annotated[RunnableConfig, InjectedToolArg]
+) -> List[Dict[str, Any]]:
+    """Get chemical details by ID.
+
+    Args:
+        chemical_id: ID of the chemical
+    """
+    configuration = Configuration.from_runnable_config(config)
+    db = SupabaseDB(configuration.supabase_url, configuration.supabase_key)
+    return await db.get_chemical_by_id(chemical_id)
+
 # List of available query tools
 CATALOG_TOOLS = [
     search_chemicals,
@@ -127,5 +141,6 @@ CATALOG_TOOLS = [
     search_by_date_range,
     get_discontinued_products,
     get_products_by_subcategory,
-    get_statistics
+    get_statistics,
+    get_chemical_details
 ]

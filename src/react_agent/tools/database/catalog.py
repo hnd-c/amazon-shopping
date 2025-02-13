@@ -23,7 +23,7 @@ class ChemicalCatalogDB(BaseDB):
     }
 
     DEFAULT_COLUMNS = [
-        'ProductName', 'CompanyName', 'BrandName', 'ChemicalName',
+        'ChemicalId', 'ProductName', 'CompanyName', 'BrandName', 'ChemicalName',
         'CasNumber', 'PrimaryCategory'
     ]
 
@@ -60,7 +60,8 @@ class ChemicalCatalogDB(BaseDB):
         subcategory: str
     ) -> List[Dict[str, Any]]:
         """Query products by subcategory."""
-        columns = ['ProductName', 'CompanyName', 'BrandName', 'ChemicalName', 'SubCategory']
+        columns = ['ChemicalId', 'ProductName', 'CompanyName', 'BrandName',
+                  'ChemicalName', 'SubCategory']
         query = self._build_query(self.TABLE_NAME, columns)
         query = query.ilike('SubCategory', f'%{subcategory}%')
         return await self.execute_query(query)
@@ -70,7 +71,8 @@ class ChemicalCatalogDB(BaseDB):
         before_date: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Query discontinued products."""
-        columns = ['ProductName', 'CompanyName', 'BrandName', 'ChemicalName', 'DiscontinuedDate']
+        columns = ['ChemicalId', 'ProductName', 'CompanyName', 'BrandName',
+                  'ChemicalName', 'DiscontinuedDate']
         filters = {'DiscontinuedDate': {'neq': None}}
 
         if before_date:
@@ -87,3 +89,17 @@ class ChemicalCatalogDB(BaseDB):
         except Exception as e:
             logger.error(f"Statistics query failed: {str(e)}")
             return {}
+
+    async def get_chemical_by_id(
+        self,
+        chemical_id: int,
+        columns: Optional[List[str]] = None
+    ) -> List[Dict[str, Any]]:
+        """Get chemical details by ID."""
+        cols = columns or self.DEFAULT_COLUMNS
+        query = self._build_query(
+            self.TABLE_NAME,
+            cols,
+            filters={'ChemicalId': chemical_id}
+        )
+        return await self.execute_query(query)
