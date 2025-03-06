@@ -71,3 +71,5 @@ input format in json
   ]
 }
 ```
+
+"python -m playwright install" add it during docker compose //note to self
