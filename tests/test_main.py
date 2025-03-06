@@ -2,7 +2,7 @@ import asyncio
 import sys
 from typing import Dict, Any, List, Optional
 
-from .main import search_amazon, AmazonConnection
+from src.react_agent.amazon_connection.main import search_amazon, AmazonConnection
 
 # Define test cases as a dictionary for easy selection and modification
 TEST_CASES = {

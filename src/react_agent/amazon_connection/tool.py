@@ -1,15 +1,171 @@
 """Amazon search tool for the React Agent."""
 
+import asyncio
 from typing import Any, Dict, List, Optional, Union
 from typing_extensions import Annotated
 from langchain_core.tools import InjectedToolArg
 from langchain_core.runnables import RunnableConfig
 import logging
 
-from react_agent.amazon_connection.main import AmazonConnection, search_amazon
+from .main import AmazonConnection, search_amazon
 
 logger = logging.getLogger(__name__)
 
+# Browser management helper functions
+async def get_or_create_browser(config: Dict[str, Any]) -> AmazonConnection:
+    """Get existing browser from config or create a new one."""
+    browser = config.get("browser")
+
+    if browser is None or not isinstance(browser, AmazonConnection):
+        logger.info("Creating new AmazonConnection browser")
+        browser = AmazonConnection(
+            headless=config.get("headless", True),
+            slow_mo=config.get("browser_slow_mo", 50),
+            proxy=config.get("browser_proxy", None),
+            proxies=config.get("browser_proxies", None)
+        )
+        await browser.start()
+        config["browser"] = browser
+        # Set a flag to indicate this browser was created by this function
+        config["browser_created_by_tool"] = True
+
+    return browser
+
+async def close_browser_if_created(config: Dict[str, Any]) -> None:
+    """Close the browser if it was created by the tool."""
+    if config.get("browser_created_by_tool") and config.get("browser"):
+        logger.info("Closing AmazonConnection browser created by tool")
+        await config["browser"].close()
+        config["browser"] = None
+        config["browser_created_by_tool"] = False
+
+# Enhanced search function with retry logic
+async def search_amazon_products_with_retry(
+    query: str,
+    *,
+    # Price filters
+    price_min: Optional[str] = None,
+    price_max: Optional[str] = None,
+    # Shipping and availability filters
+    prime_only: bool = False,
+    free_shipping: bool = False,
+    max_delivery_days: Optional[int] = None,
+    availability: Optional[str] = None,
+    # Brand and seller filters
+    brand: Optional[str] = None,
+    seller: Optional[str] = None,
+    # Rating and review filters
+    min_rating: Optional[int] = None,
+    customer_reviews: Optional[str] = None,
+    # Deal filters
+    discount_only: bool = False,
+    deals: bool = False,
+    # Product attribute filters
+    condition: Optional[str] = None,
+    department: Optional[str] = None,
+    category: Optional[str] = None,
+    color: Optional[str] = None,
+    size: Optional[str] = None,
+    material: Optional[str] = None,
+    features: Optional[str] = None,
+    # Sorting and display
+    sort_by: Optional[str] = "review-rank",
+    max_results: int = 5,
+    config: Annotated[RunnableConfig, InjectedToolArg]
+) -> List[Dict[str, Any]]:
+    """Search for products on Amazon with comprehensive filtering and retry logic."""
+    max_retries = 3
+    retry_delay = 2  # seconds
+
+    # Build filters dictionary
+    filters = {}
+    locals_copy = locals().copy()
+    for param, value in locals_copy.items():
+        if param not in ['query', 'filters', 'max_results', 'config', 'max_retries',
+                         'retry_delay', 'locals_copy']:
+            if value is not None and not (isinstance(value, bool) and value is False):
+                filters[param] = value
+
+    # Process special parameters
+    if brand and isinstance(brand, str) and "," in brand:
+        filters["brand"] = [b.strip() for b in brand.split(",")]
+
+    if features and isinstance(features, str) and "," in features:
+        filters["features"] = [f.strip() for f in features.split(",")]
+
+    for attempt in range(max_retries):
+        try:
+            # Get or create browser
+            browser = await get_or_create_browser(config)
+
+            # Execute search
+            logger.info(f"Searching Amazon for: {query} (attempt {attempt+1}/{max_retries})")
+            products = await browser.search_products(query)
+
+            if filters:
+                logger.info(f"Applying filters: {filters}")
+                products = await browser.apply_filters(filters)
+
+            # Format results
+            formatted_results = []
+            for product in products[:max_results]:
+                formatted_product = {
+                    "title": product.get("title", "Unknown"),
+                    "price": product.get("price", "N/A"),
+                    "url": product.get("url", ""),
+                    "asin": product.get("asin", ""),
+                    "prime_eligible": product.get("prime_eligible", False)
+                }
+
+                # Add optional fields if available
+                for field in ["rating", "review_count", "availability", "delivery_info"]:
+                    if field in product:
+                        formatted_product[field] = product[field]
+
+                formatted_results.append(formatted_product)
+
+            logger.info(f"Found {len(formatted_results)} products for query: {query}")
+            return formatted_results
+
+        except Exception as e:
+            error_type = str(type(e).__name__)
+            error_msg = str(e)
+
+            # Handle specific error types
+            if "blocked" in error_msg.lower() or "captcha" in error_msg.lower():
+                logger.warning(f"Amazon blocking detected: {error_msg}")
+                if attempt < max_retries - 1:
+                    # Rotate proxy or user agent if available
+                    browser = config.get("browser")
+                    if browser and hasattr(browser, "rotate_proxy"):
+                        logger.info("Rotating proxy and trying again")
+                        await browser.rotate_proxy()
+                    # Wait before retry with exponential backoff
+                    backoff_time = retry_delay * (2 ** attempt)
+                    logger.info(f"Waiting {backoff_time}s before retry")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                return [{"error": "Access temporarily blocked by Amazon. Please try again later."}]
+
+            # Network errors
+            if any(err in error_msg.lower() for err in ["network", "timeout", "connection"]):
+                logger.warning(f"Network error: {error_msg}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return [{"error": f"Network error: {error_msg}. Please check your connection."}]
+
+            # General errors
+            logger.error(f"Error searching Amazon ({error_type}): {error_msg}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                continue
+            return [{"error": f"Failed to search Amazon: {error_msg}"}]
+
+    # If we get here, all retries failed
+    return [{"error": "Failed to complete search after multiple attempts."}]
+
+# Replace the original search_amazon_products with our enhanced version
 async def search_amazon_products(
     query: str,
     *,
@@ -43,98 +199,37 @@ async def search_amazon_products(
     max_results: int = 5,
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> List[Dict[str, Any]]:
-    """Search for products on Amazon with comprehensive filtering options.
-
-    Args:
-        query: The search query for products
-        price_min: Minimum price (e.g. "10.99")
-        price_max: Maximum price (e.g. "99.99")
-        prime_only: Only show Prime eligible items
-        free_shipping: Only show items with free shipping
-        max_delivery_days: Maximum delivery days (e.g. 2 for two-day shipping)
-        availability: Availability status (e.g. "in_stock")
-        brand: Brand name or comma-separated list of brands
-        seller: Specific seller name
-        min_rating: Minimum star rating (1-5)
-        customer_reviews: Filter by review type ("positive" or "critical")
-        discount_only: Only show discounted items
-        deals: Only show deals
-        condition: Product condition ("new", "used", "renewed", "refurbished")
-        department: Department/category name
-        category: Simplified category name (e.g. "electronics", "home", "beauty")
-        color: Product color
-        size: Product size
-        material: Product material
-        features: Comma-separated list of product features to filter by
-        sort_by: Sort method ("featured", "price-asc", "price-desc", "review-rank", "newest")
-        max_results: Maximum number of results to return
-
-    Returns:
-        List of product information including title, price, rating, and URL
-    """
-    logger.info(f"Searching Amazon for: {query}")
-
-    # Process brand parameter if it's a comma-separated string
-    brand_param = None
-    if brand:
-        if "," in brand:
-            brand_param = [b.strip() for b in brand.split(",")]
-        else:
-            brand_param = brand
-
-    # Process features if it's a comma-separated string
-    features_param = None
-    if features:
-        features_param = [f.strip() for f in features.split(",")]
-
-    # Build filters dictionary
-    filters = {}
-
-    # Add all non-None parameters to filters
-    locals_copy = locals().copy()
-    for param, value in locals_copy.items():
-        if param not in ['query', 'filters', 'max_results', 'config', 'brand', 'features',
-                         'brand_param', 'features_param', 'locals_copy']:
-            if value is not None and not (isinstance(value, bool) and value is False):
-                filters[param] = value
-
-    # Add processed parameters
-    if brand_param:
-        filters["brand"] = brand_param
-    if features_param:
-        filters["features"] = features_param
-
+    """Search for products on Amazon with comprehensive filtering options."""
     try:
-        # Run the search in headless mode
-        products = await search_amazon(query, filters)
-
-        # Format the results
-        formatted_results = []
-        for product in products[:max_results]:
-            formatted_product = {
-                "title": product.get("title", "Unknown"),
-                "price": product.get("price", "N/A"),
-                "url": product.get("url", ""),
-                "asin": product.get("asin", ""),
-                "prime_eligible": product.get("prime_eligible", False)
-            }
-
-            # Add rating if available
-            if "rating" in product:
-                formatted_product["rating"] = product["rating"]
-
-            # Add review count if available
-            if "review_count" in product:
-                formatted_product["review_count"] = product["review_count"]
-
-            formatted_results.append(formatted_product)
-
-        logger.info(f"Found {len(formatted_results)} products for query: {query}")
-        return formatted_results
-
-    except Exception as e:
-        logger.error(f"Error searching Amazon: {str(e)}")
-        return [{"error": f"Failed to search Amazon: {str(e)}"}]
+        return await search_amazon_products_with_retry(
+            query=query,
+            price_min=price_min,
+            price_max=price_max,
+            prime_only=prime_only,
+            free_shipping=free_shipping,
+            max_delivery_days=max_delivery_days,
+            availability=availability,
+            brand=brand,
+            seller=seller,
+            min_rating=min_rating,
+            customer_reviews=customer_reviews,
+            discount_only=discount_only,
+            deals=deals,
+            condition=condition,
+            department=department,
+            category=category,
+            color=color,
+            size=size,
+            material=material,
+            features=features,
+            sort_by=sort_by,
+            max_results=max_results,
+            config=config
+        )
+    finally:
+        # Only close the browser if we're not in a chain of Amazon tool calls
+        if not config.get("keep_browser_open"):
+            await close_browser_if_created(config)
 
 async def find_deals(
     category: str,
@@ -158,6 +253,8 @@ async def find_deals(
         List of deal products with price, rating, and discount information
     """
     logger.info(f"Finding deals in category: {category}")
+    max_retries = 3
+    retry_delay = 2  # seconds
 
     # Build filters for deals search
     filters = {
@@ -173,33 +270,76 @@ async def find_deals(
     if min_rating:
         filters["min_rating"] = min_rating
 
-    try:
-        # Run the search in headless mode
-        products = await search_amazon(category, filters)
+    for attempt in range(max_retries):
+        try:
+            # Get or create browser
+            browser = await get_or_create_browser(config)
 
-        # Format the results
-        formatted_results = []
-        for product in products[:max_results]:
-            formatted_product = {
-                "title": product.get("title", "Unknown"),
-                "price": product.get("price", "N/A"),
-                "url": product.get("url", ""),
-                "prime_eligible": product.get("prime_eligible", False),
-                "deal_type": "Discount/Deal"
-            }
+            # Execute search
+            logger.info(f"Searching Amazon deals for: {category} (attempt {attempt+1}/{max_retries})")
+            products = await browser.search_products(category)
 
-            # Add rating if available
-            if "rating" in product:
-                formatted_product["rating"] = product["rating"]
+            if filters:
+                logger.info(f"Applying filters: {filters}")
+                products = await browser.apply_filters(filters)
 
-            formatted_results.append(formatted_product)
+            # Format the results
+            formatted_results = []
+            for product in products[:max_results]:
+                formatted_product = {
+                    "title": product.get("title", "Unknown"),
+                    "price": product.get("price", "N/A"),
+                    "url": product.get("url", ""),
+                    "prime_eligible": product.get("prime_eligible", False),
+                    "deal_type": "Discount/Deal"
+                }
 
-        logger.info(f"Found {len(formatted_results)} deals in category: {category}")
-        return formatted_results
+                # Add rating if available
+                if "rating" in product:
+                    formatted_product["rating"] = product["rating"]
 
-    except Exception as e:
-        logger.error(f"Error finding deals: {str(e)}")
-        return [{"error": f"Failed to find deals: {str(e)}"}]
+                formatted_results.append(formatted_product)
+
+            logger.info(f"Found {len(formatted_results)} deals in category: {category}")
+            return formatted_results
+
+        except Exception as e:
+            error_type = str(type(e).__name__)
+            error_msg = str(e)
+
+            # Handle specific error types
+            if "blocked" in error_msg.lower() or "captcha" in error_msg.lower():
+                logger.warning(f"Amazon blocking detected: {error_msg}")
+                if attempt < max_retries - 1:
+                    # Rotate proxy or user agent if available
+                    browser = config.get("browser")
+                    if browser and hasattr(browser, "rotate_proxy"):
+                        logger.info("Rotating proxy and trying again")
+                        await browser.rotate_proxy()
+                    # Wait before retry with exponential backoff
+                    backoff_time = retry_delay * (2 ** attempt)
+                    logger.info(f"Waiting {backoff_time}s before retry")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                return [{"error": "Access temporarily blocked by Amazon. Please try again later."}]
+
+            # Network errors
+            if any(err in error_msg.lower() for err in ["network", "timeout", "connection"]):
+                logger.warning(f"Network error: {error_msg}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return [{"error": f"Network error: {error_msg}. Please check your connection."}]
+
+            # General errors
+            logger.error(f"Error finding deals ({error_type}): {error_msg}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                continue
+            return [{"error": f"Failed to find deals: {error_msg}"}]
+
+    # If we get here, all retries failed
+    return [{"error": "Failed to find deals after multiple attempts."}]
 
 async def compare_products(
     product_urls: str,
@@ -215,6 +355,8 @@ async def compare_products(
         Comparison of products with key features, prices, and ratings
     """
     logger.info(f"Comparing products")
+    max_retries = 3
+    retry_delay = 2  # seconds
 
     # Split URLs
     urls = [url.strip() for url in product_urls.split(",")]
@@ -224,11 +366,14 @@ async def compare_products(
     if len(urls) > 5:
         urls = urls[:5]  # Limit to 5 products for comparison
 
-    try:
-        products = []
-        async with AmazonConnection(headless=True) as amazon:
+    for attempt in range(max_retries):
+        try:
+            # Get or create browser
+            browser = await get_or_create_browser(config)
+
+            products = []
             for url in urls:
-                details = await amazon.get_product_details(url)
+                details = await browser.get_product_details(url)
                 if details:
                     products.append({
                         "title": details.get("title", "Unknown"),
@@ -239,21 +384,54 @@ async def compare_products(
                         "url": url
                     })
 
-        # Create comparison result
-        comparison = {
-            "products": products,
-            "comparison_summary": {
-                "price_range": f"{min([p.get('price', '$0') for p in products])} - {max([p.get('price', '$0') for p in products])}",
-                "highest_rated": max(products, key=lambda x: float(x.get("rating", "0").split()[0]) if x.get("rating") else 0).get("title"),
-                "total_compared": len(products)
+            # Create comparison result
+            comparison = {
+                "products": products,
+                "comparison_summary": {
+                    "price_range": f"{min([p.get('price', '$0') for p in products])} - {max([p.get('price', '$0') for p in products])}",
+                    "highest_rated": max(products, key=lambda x: float(x.get("rating", "0").split()[0]) if x.get("rating") else 0).get("title"),
+                    "total_compared": len(products)
+                }
             }
-        }
 
-        return comparison
+            return comparison
 
-    except Exception as e:
-        logger.error(f"Error comparing products: {str(e)}")
-        return {"error": f"Failed to compare products: {str(e)}"}
+        except Exception as e:
+            error_type = str(type(e).__name__)
+            error_msg = str(e)
+
+            # Handle specific error types
+            if "blocked" in error_msg.lower() or "captcha" in error_msg.lower():
+                logger.warning(f"Amazon blocking detected: {error_msg}")
+                if attempt < max_retries - 1:
+                    # Rotate proxy or user agent if available
+                    if browser and hasattr(browser, "rotate_proxy"):
+                        logger.info("Rotating proxy and trying again")
+                        await browser.rotate_proxy()
+                    # Wait before retry with exponential backoff
+                    backoff_time = retry_delay * (2 ** attempt)
+                    logger.info(f"Waiting {backoff_time}s before retry")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                return {"error": "Access temporarily blocked by Amazon. Please try again later."}
+
+            # Network errors
+            if any(err in error_msg.lower() for err in ["network", "timeout", "connection"]):
+                logger.warning(f"Network error: {error_msg}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return {"error": f"Network error: {error_msg}. Please check your connection."}
+
+            # General errors
+            logger.error(f"Error comparing products ({error_type}): {error_msg}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                continue
+            return {"error": f"Failed to compare products: {error_msg}"}
+
+    # If we get here, all retries failed
+    return {"error": "Failed to compare products after multiple attempts."}
 
 async def find_bestsellers(
     category: str,
@@ -273,6 +451,8 @@ async def find_bestsellers(
         List of bestselling products in the specified category
     """
     logger.info(f"Finding bestsellers in category: {category}")
+    max_retries = 3
+    retry_delay = 2  # seconds
 
     # Build filters for bestseller search
     filters = {
@@ -282,30 +462,72 @@ async def find_bestsellers(
         "min_rating": 4
     }
 
-    try:
-        # Run the search in headless mode
-        products = await search_amazon(f"best {category}", filters)
+    for attempt in range(max_retries):
+        try:
+            # Get or create browser
+            browser = await get_or_create_browser(config)
 
-        # Format the results
-        formatted_results = []
-        for product in products[:max_results]:
-            formatted_product = {
-                "title": product.get("title", "Unknown"),
-                "price": product.get("price", "N/A"),
-                "url": product.get("url", ""),
-                "rating": product.get("rating", "N/A"),
-                "prime_eligible": product.get("prime_eligible", False),
-                "bestseller_rank": f"#{len(formatted_results)+1} in {category}"
-            }
+            # Execute search
+            logger.info(f"Searching Amazon bestsellers for: {category} (attempt {attempt+1}/{max_retries})")
+            products = await browser.search_products(f"best {category}")
 
-            formatted_results.append(formatted_product)
+            if filters:
+                logger.info(f"Applying filters: {filters}")
+                products = await browser.apply_filters(filters)
 
-        logger.info(f"Found {len(formatted_results)} bestsellers in category: {category}")
-        return formatted_results
+            # Format the results
+            formatted_results = []
+            for product in products[:max_results]:
+                formatted_product = {
+                    "title": product.get("title", "Unknown"),
+                    "price": product.get("price", "N/A"),
+                    "url": product.get("url", ""),
+                    "rating": product.get("rating", "N/A"),
+                    "prime_eligible": product.get("prime_eligible", False),
+                    "bestseller_rank": f"#{len(formatted_results)+1} in {category}"
+                }
 
-    except Exception as e:
-        logger.error(f"Error finding bestsellers: {str(e)}")
-        return [{"error": f"Failed to find bestsellers: {str(e)}"}]
+                formatted_results.append(formatted_product)
+
+            logger.info(f"Found {len(formatted_results)} bestsellers in category: {category}")
+            return formatted_results
+
+        except Exception as e:
+            error_type = str(type(e).__name__)
+            error_msg = str(e)
+
+            # Handle specific error types
+            if "blocked" in error_msg.lower() or "captcha" in error_msg.lower():
+                logger.warning(f"Amazon blocking detected: {error_msg}")
+                if attempt < max_retries - 1:
+                    # Rotate proxy or user agent if available
+                    if browser and hasattr(browser, "rotate_proxy"):
+                        logger.info("Rotating proxy and trying again")
+                        await browser.rotate_proxy()
+                    # Wait before retry with exponential backoff
+                    backoff_time = retry_delay * (2 ** attempt)
+                    logger.info(f"Waiting {backoff_time}s before retry")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                return [{"error": "Access temporarily blocked by Amazon. Please try again later."}]
+
+            # Network errors
+            if any(err in error_msg.lower() for err in ["network", "timeout", "connection"]):
+                logger.warning(f"Network error: {error_msg}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return [{"error": f"Network error: {error_msg}. Please check your connection."}]
+
+            # General errors
+            logger.error(f"Error finding bestsellers ({error_type}): {error_msg}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                continue
+            return [{"error": f"Failed to find bestsellers: {error_msg}"}]
+
+    # If we get here, all retries failed
+    return [{"error": "Failed to find bestsellers after multiple attempts."}]
 
 async def get_product_details(
     product_url: str,
@@ -321,54 +543,93 @@ async def get_product_details(
         Detailed product information including features, specifications, and reviews
     """
     logger.info(f"Getting details for product: {product_url}")
+    max_retries = 3
+    retry_delay = 2  # seconds
 
-    try:
-        async with AmazonConnection(headless=True) as amazon:
-            details = await amazon.get_product_details(product_url)
-            reviews = await amazon.get_product_reviews(product_url)
+    for attempt in range(max_retries):
+        try:
+            # Get or create browser
+            browser = await get_or_create_browser(config)
 
-        # Format the response
-        result = {
-            "title": details.get("title", "Unknown"),
-            "price": details.get("price", "N/A"),
-            "rating": details.get("rating", "N/A"),
-            "prime_eligible": details.get("prime_eligible", False),
-            "availability": details.get("availability", "Unknown")
-        }
+            logger.info(f"Fetching product details (attempt {attempt+1}/{max_retries})")
+            details = await browser.get_product_details(product_url)
+            reviews = await browser.get_product_reviews(product_url)
 
-        # Add delivery info if available
-        if "delivery_info" in details:
-            result["delivery_info"] = details["delivery_info"]
+            # Format the response
+            result = {
+                "title": details.get("title", "Unknown"),
+                "price": details.get("price", "N/A"),
+                "rating": details.get("rating", "N/A"),
+                "prime_eligible": details.get("prime_eligible", False),
+                "availability": details.get("availability", "Unknown")
+            }
 
-        # Add description if available
-        if "description" in details and details["description"]:
-            result["description"] = details["description"]
+            # Add delivery info if available
+            if "delivery_info" in details:
+                result["delivery_info"] = details["delivery_info"]
 
-        # Add features if available
-        if "features" in details and details["features"]:
-            result["features"] = details["features"][:5]  # Limit to top 5 features
+            # Add description if available
+            if "description" in details and details["description"]:
+                result["description"] = details["description"]
 
-        # Add specifications if available
-        if "specifications" in details and details["specifications"]:
-            result["specifications"] = details["specifications"]
+            # Add features if available
+            if "features" in details and details["features"]:
+                result["features"] = details["features"][:5]  # Limit to top 5 features
 
-        # Add reviews if available
-        if reviews:
-            result["reviews"] = []
-            for review in reviews[:3]:  # Limit to top 3 reviews
-                result["reviews"].append({
-                    "rating": review.get("rating", "N/A"),
-                    "title": review.get("title", ""),
-                    "date": review.get("date", ""),
-                    "verified_purchase": review.get("verified_purchase", False),
-                    "content": review.get("content", "")[:200]  # Limit content length
-                })
+            # Add specifications if available
+            if "specifications" in details and details["specifications"]:
+                result["specifications"] = details["specifications"]
 
-        return result
+            # Add reviews if available
+            if reviews:
+                result["reviews"] = []
+                for review in reviews[:3]:  # Limit to top 3 reviews
+                    result["reviews"].append({
+                        "rating": review.get("rating", "N/A"),
+                        "title": review.get("title", ""),
+                        "date": review.get("date", ""),
+                        "verified_purchase": review.get("verified_purchase", False),
+                        "content": review.get("content", "")[:200]  # Limit content length
+                    })
 
-    except Exception as e:
-        logger.error(f"Error getting product details: {str(e)}")
-        return {"error": f"Failed to get product details: {str(e)}"}
+            return result
+
+        except Exception as e:
+            error_type = str(type(e).__name__)
+            error_msg = str(e)
+
+            # Handle specific error types
+            if "blocked" in error_msg.lower() or "captcha" in error_msg.lower():
+                logger.warning(f"Amazon blocking detected: {error_msg}")
+                if attempt < max_retries - 1:
+                    # Rotate proxy or user agent if available
+                    if browser and hasattr(browser, "rotate_proxy"):
+                        logger.info("Rotating proxy and trying again")
+                        await browser.rotate_proxy()
+                    # Wait before retry with exponential backoff
+                    backoff_time = retry_delay * (2 ** attempt)
+                    logger.info(f"Waiting {backoff_time}s before retry")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                return {"error": "Access temporarily blocked by Amazon. Please try again later."}
+
+            # Network errors
+            if any(err in error_msg.lower() for err in ["network", "timeout", "connection"]):
+                logger.warning(f"Network error: {error_msg}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return {"error": f"Network error: {error_msg}. Please check your connection."}
+
+            # General errors
+            logger.error(f"Error getting product details ({error_type}): {error_msg}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                continue
+            return {"error": f"Failed to get product details: {error_msg}"}
+
+    # If we get here, all retries failed
+    return {"error": "Failed to get product details after multiple attempts."}
 
 async def get_product_reviews(
     product_url: str,
@@ -388,44 +649,83 @@ async def get_product_reviews(
         Product reviews with ratings, titles, and content
     """
     logger.info(f"Getting reviews for product: {product_url}")
+    max_retries = 3
+    retry_delay = 2  # seconds
 
-    try:
-        async with AmazonConnection(headless=True) as amazon:
-            details = await amazon.get_product_details(product_url)
-            all_reviews = await amazon.get_product_reviews(product_url)
+    for attempt in range(max_retries):
+        try:
+            # Get or create browser
+            browser = await get_or_create_browser(config)
 
-        # Filter reviews if review_type is specified
-        filtered_reviews = all_reviews
-        if review_type and all_reviews:
-            if review_type.lower() == "positive":
-                filtered_reviews = [r for r in all_reviews if r.get("rating", "").startswith(("4", "5"))]
-            elif review_type.lower() == "critical":
-                filtered_reviews = [r for r in all_reviews if r.get("rating", "").startswith(("1", "2", "3"))]
+            logger.info(f"Fetching product reviews (attempt {attempt+1}/{max_retries})")
+            details = await browser.get_product_details(product_url)
+            all_reviews = await browser.get_product_reviews(product_url)
 
-        # Format the response
-        result = {
-            "product_title": details.get("title", "Unknown"),
-            "overall_rating": details.get("rating", "N/A"),
-            "total_reviews": len(all_reviews),
-            "reviews": []
-        }
+            # Filter reviews if review_type is specified
+            filtered_reviews = all_reviews
+            if review_type and all_reviews:
+                if review_type.lower() == "positive":
+                    filtered_reviews = [r for r in all_reviews if r.get("rating", "").startswith(("4", "5"))]
+                elif review_type.lower() == "critical":
+                    filtered_reviews = [r for r in all_reviews if r.get("rating", "").startswith(("1", "2", "3"))]
 
-        # Add reviews
-        for review in filtered_reviews[:max_reviews]:
-            result["reviews"].append({
-                "rating": review.get("rating", "N/A"),
-                "title": review.get("title", ""),
-                "date": review.get("date", ""),
-                "verified_purchase": review.get("verified_purchase", False),
-                "content": review.get("content", ""),
-                "helpful_votes": review.get("helpful_votes", "0")
-            })
+            # Format the response
+            result = {
+                "product_title": details.get("title", "Unknown"),
+                "overall_rating": details.get("rating", "N/A"),
+                "total_reviews": len(all_reviews),
+                "reviews": []
+            }
 
-        return result
+            # Add reviews
+            for review in filtered_reviews[:max_reviews]:
+                result["reviews"].append({
+                    "rating": review.get("rating", "N/A"),
+                    "title": review.get("title", ""),
+                    "date": review.get("date", ""),
+                    "verified_purchase": review.get("verified_purchase", False),
+                    "content": review.get("content", ""),
+                    "helpful_votes": review.get("helpful_votes", "0")
+                })
 
-    except Exception as e:
-        logger.error(f"Error getting product reviews: {str(e)}")
-        return {"error": f"Failed to get product reviews: {str(e)}"}
+            return result
+
+        except Exception as e:
+            error_type = str(type(e).__name__)
+            error_msg = str(e)
+
+            # Handle specific error types
+            if "blocked" in error_msg.lower() or "captcha" in error_msg.lower():
+                logger.warning(f"Amazon blocking detected: {error_msg}")
+                if attempt < max_retries - 1:
+                    # Rotate proxy or user agent if available
+                    if browser and hasattr(browser, "rotate_proxy"):
+                        logger.info("Rotating proxy and trying again")
+                        await browser.rotate_proxy()
+                    # Wait before retry with exponential backoff
+                    backoff_time = retry_delay * (2 ** attempt)
+                    logger.info(f"Waiting {backoff_time}s before retry")
+                    await asyncio.sleep(backoff_time)
+                    continue
+                return {"error": "Access temporarily blocked by Amazon. Please try again later."}
+
+            # Network errors
+            if any(err in error_msg.lower() for err in ["network", "timeout", "connection"]):
+                logger.warning(f"Network error: {error_msg}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return {"error": f"Network error: {error_msg}. Please check your connection."}
+
+            # General errors
+            logger.error(f"Error getting product reviews ({error_type}): {error_msg}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                continue
+            return {"error": f"Failed to get product reviews: {error_msg}"}
+
+    # If we get here, all retries failed
+    return {"error": "Failed to get product reviews after multiple attempts."}
 
 # List of available Amazon tools
 AMAZON_TOOLS = [
@@ -436,3 +736,5 @@ AMAZON_TOOLS = [
     get_product_details,
     get_product_reviews
 ]
+
+

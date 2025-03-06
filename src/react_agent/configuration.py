@@ -19,7 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def load_config() -> dict:
-    """Load configuration from config.json file and inject env variables."""
+    """Load configuration from config.json file."""
     # First load environment variables
     env_path = Path('.env')
     if not env_path.exists():
@@ -52,11 +52,6 @@ def load_config() -> dict:
     try:
         with open(config_file) as f:
             config = json.load(f)
-
-        # Inject environment variables
-        config['supabase_url'] = os.environ.get('SUPABASE_URL', config.get('supabase_url', ''))
-        config['supabase_key'] = os.environ.get('SUPABASE_KEY', config.get('supabase_key', ''))
-
         return config
     except Exception as e:
         logger.error(f"Error loading configuration: {str(e)}")
@@ -67,10 +62,10 @@ CONFIG = load_config()
 
 @dataclass(kw_only=True)
 class Configuration:
-    """The configuration for the agent."""
+    """The configuration for the Amazon shopping assistant agent."""
 
     name: str = field(
-        default=CONFIG.get('name', 'Default'),
+        default=CONFIG.get('name', 'Amazon Shopping Assistant'),
         metadata={
             "description": "Name of this configuration"
         },
@@ -90,22 +85,9 @@ class Configuration:
         },
     )
 
-    supabase_url: str = field(
-        default=CONFIG.get('supabase_url', ''),
-        metadata={
-            "description": "The URL of your Supabase instance."
-        },
-    )
-
-    supabase_key: str = field(
-        default=CONFIG.get('supabase_key', ''),
-        metadata={
-            "description": "The anonymous API key for your Supabase instance."
-        },
-    )
-
+    # Results configuration
     max_search_results: int = field(
-        default=CONFIG.get('max_search_results', 10),
+        default=CONFIG.get('max_search_results', 5),
         metadata={
             "description": "Maximum number of search results to return."
         },
@@ -113,23 +95,10 @@ class Configuration:
 
     def __post_init__(self):
         """Validate configuration after initialization."""
-        logger.info("Checking Supabase configuration...")
-
-        # Validate URL
-        if not self.supabase_url:
-            raise ValueError("Supabase URL is not configured")
-        if not self.supabase_url.startswith("https://"):
-            raise ValueError(f"Invalid Supabase URL: {self.supabase_url}")
-
-        # Validate key
-        if not self.supabase_key:
-            raise ValueError("Supabase key is not configured")
-        if len(self.supabase_key) < 100:  # JWT tokens are typically longer
-            raise ValueError("Invalid Supabase key format")
-
+        # Log configuration
         logger.info(f"Using configuration: {self.name}")
-        logger.info(f"Supabase URL: {self.supabase_url[:20]}...")
-        logger.info(f"Supabase key: {self.supabase_key[:20]}...")
+        logger.info(f"Model: {self.model}")
+        logger.info(f"Max search results: {self.max_search_results}")
 
     @classmethod
     def from_runnable_config(
@@ -150,10 +119,9 @@ class Configuration:
         # Create instance with config.json values first
         instance = cls()
 
-        # Update non-credential fields from configurable
-        safe_fields = {'name', 'system_prompt', 'model', 'max_search_results'}
+        # Update fields from configurable
         for field in fields(cls):
-            if field.name in safe_fields and field.name in configurable:
+            if field.name in configurable:
                 setattr(instance, field.name, configurable[field.name])
 
         return instance

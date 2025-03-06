@@ -51,7 +51,7 @@ source venv/bin/activate
 
 install dependencies
 ```bash
-pip install -e .
+make setup
 ```
 
 run the agent in langsmith studio

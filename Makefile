@@ -1,4 +1,4 @@
-.PHONY: all format lint test tests test_watch integration_tests docker_tests help extended_tests
+.PHONY: all format lint test tests test_watch integration_tests docker_tests help extended_tests install setup install-browsers test-amazon test-amazon-all test-main
 
 # Default target executed when no arguments are given to make.
 all: help
@@ -6,6 +6,37 @@ all: help
 # Define a variable for the test file path.
 TEST_FILE ?= tests/unit_tests/
 
+# Installation targets
+install:
+	pip install -e ".[dev]"
+
+install-browsers:
+	playwright install
+
+setup: install install-browsers
+	@echo "Setup complete! Amazon shopping assistant is ready to use."
+
+# Amazon tool testing
+test-amazon:
+	python -m src.react_agent.amazon_connection.test_tool --test search_basic
+
+test-amazon-all:
+	python -m src.react_agent.amazon_connection.test_tool --all
+
+# Test files in tests directory
+test-tool:
+	python -m tests.test_tool --test search_basic
+
+test-tool-all:
+	python -m tests.test_tool --all
+
+test-main:
+	python -m tests.test_main --test bluetooth_speaker
+
+test-main-all:
+	python -m tests.test_main --all
+
+# Testing targets
 test:
 	python -m pytest $(TEST_FILE)
 
@@ -55,6 +86,15 @@ spell_fix:
 
 help:
 	@echo '----'
+	@echo 'setup                        - install package and Playwright browsers'
+	@echo 'install                      - install package in development mode'
+	@echo 'install-browsers             - install Playwright browsers'
+	@echo 'test-amazon                  - run basic Amazon tool test (from src)'
+	@echo 'test-amazon-all              - run all Amazon tool tests (from src)'
+	@echo 'test-tool                    - run basic tool test (from tests dir)'
+	@echo 'test-tool-all                - run all tool tests (from tests dir)'
+	@echo 'test-main                    - run basic main test (from tests dir)'
+	@echo 'test-main-all                - run all main tests (from tests dir)'
 	@echo 'format                       - run code formatters'
 	@echo 'lint                         - run linters'
 	@echo 'test                         - run unit tests'

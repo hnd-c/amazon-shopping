@@ -1,4 +1,4 @@
-"""Define a custom Reasoning and Action agent.
+"""Define a custom Reasoning and Action agent for Amazon shopping.
 
 Works with a chat model with tool calling support.
 """
@@ -13,7 +13,7 @@ from langgraph.prebuilt import ToolNode
 
 from react_agent.configuration import Configuration
 from react_agent.state import InputState, State
-from react_agent.tools import TOOLS
+from react_agent.amazon_connection.tool import AMAZON_TOOLS
 from react_agent.utils import load_chat_model
 import logging
 
@@ -21,8 +21,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Define the function that calls the model
-
-
 async def call_model(
     state: State, config: RunnableConfig
 ) -> Dict[str, List[AIMessage]]:
@@ -38,23 +36,24 @@ async def call_model(
         dict: A dictionary containing the model's response message.
     """
     try:
-        # Create a new Configuration instance with Supabase credentials
+        # Create a new Configuration instance
         configuration = Configuration()
 
         # Add the configuration to the config dict so tools can access it
         if "configurable" not in config:
             config["configurable"] = {}
         config["configurable"].update({
-            "supabase_url": configuration.supabase_url,
-            "supabase_key": configuration.supabase_key,
             "model": configuration.model,
             "system_prompt": configuration.system_prompt,
+            "max_search_results": configuration.max_search_results,
+            # Set keep_browser_open to True for better performance in multi-step conversations
+            "keep_browser_open": True
         })
 
-        logger.info(f"Configuration loaded with Supabase URL: {configuration.supabase_url[:8]}...")
+        logger.info(f"Configuration loaded with model: {configuration.model}")
 
         # Initialize the model with tool binding
-        model = load_chat_model(configuration.model).bind_tools(TOOLS)
+        model = load_chat_model(configuration.model).bind_tools(AMAZON_TOOLS)
 
         # Format the system prompt
         system_message = configuration.system_prompt.format(
@@ -76,7 +75,7 @@ async def call_model(
                 "messages": [
                     AIMessage(
                         id=response.id,
-                        content="Sorry, I could not find an answer to your question in the specified number of steps.",
+                        content="Sorry, I could not complete your shopping request in the specified number of steps. Please try a more specific request.",
                     )
                 ]
             }
@@ -89,13 +88,10 @@ async def call_model(
 
 
 # Define a new graph
-
 builder = StateGraph(State, input=InputState, config_schema=Configuration)
 
-# Create tool node with configuration
-tool_node = ToolNode(
-    TOOLS,  # Only pass the tools, remove the callbacks parameter
-)
+# Create tool node with Amazon tools
+tool_node = ToolNode(AMAZON_TOOLS)
 
 # Add nodes to the graph
 builder.add_node(call_model)
@@ -141,9 +137,8 @@ builder.add_conditional_edges(
 builder.add_edge("tools", "call_model")
 
 # Compile the builder into an executable graph
-# You can customize this by adding interrupt points for state updates
 graph = builder.compile(
-    interrupt_before=[],  # Add node names here to update state before they're called
-    interrupt_after=[],  # Add node names here to update state after they're called
+    interrupt_before=[],
+    interrupt_after=[],
 )
-graph.name = "Chemical Catalog Agent"  # This customizes the name in LangSmith
+graph.name = "Amazon Shopping Assistant"  # Custom name for LangSmith
