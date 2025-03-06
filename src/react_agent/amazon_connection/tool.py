@@ -66,7 +66,7 @@ async def search_amazon_products(
     # Sorting and display
     sort_by: Optional[str] = "review-rank",
     max_results: int = 5,
-    browser: Optional[AmazonConnection] = None,  # Added by decorator
+    browser: Optional[Any] = None,  # Added by decorator
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[List[ProductInfo], ErrorResponse]:
     """Search for products on Amazon with comprehensive filtering options."""
