@@ -1,30 +1,147 @@
-"""Amazon Connection Module - Handles all interactions with Amazon's website. Uses Playwright for browser automation to search, filter, and extract product information.
-"""
+"""Amazon Connection Module - Handles all interactions with Amazon's website. Uses Playwright for browser automation to search, filter, and extract product information."""
 
 import asyncio
 import logging
 import random
 import time
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright, Response
 from urllib.parse import urlencode, quote_plus
+
+from .utils import with_retry, create_error_response, SELECTORS, USER_AGENTS, RateLimiter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Forward reference for type checking
+if TYPE_CHECKING:
+    from .main import AmazonConnection
+
+class BrowserPool:
+    """Manages a pool of browser instances for reuse."""
+
+    def __init__(self, max_browsers=3, ttl_seconds=300, cleanup_interval=60):
+        self.browsers = []
+        self.max_browsers = max_browsers
+        self.ttl_seconds = ttl_seconds
+        self.last_used = {}
+        self.lock = asyncio.Lock()
+        self.cleanup_task = None
+        self.cleanup_interval = cleanup_interval
+
+    async def start_cleanup_task(self):
+        """Start the periodic cleanup task."""
+        if self.cleanup_task is None:
+            self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
+
+    async def _periodic_cleanup(self):
+        """Periodically clean up expired browsers."""
+        while True:
+            await asyncio.sleep(self.cleanup_interval)
+            await self.cleanup_expired_browsers()
+
+    async def cleanup_expired_browsers(self):
+        """Clean up expired browsers."""
+        async with self.lock:
+            current_time = time.time()
+            for browser_id in list(self.last_used.keys()):
+                if current_time - self.last_used[browser_id] > self.ttl_seconds:
+                    await self._close_browser(browser_id)
+
+    async def get_browser(self, headless=True, slow_mo=50, proxy=None, proxies=None):
+        """Get an available browser from the pool or create a new one."""
+        async with self.lock:
+            # Clean up expired browsers
+            current_time = time.time()
+            for browser_id in list(self.last_used.keys()):
+                if current_time - self.last_used[browser_id] > self.ttl_seconds:
+                    await self._close_browser(browser_id)
+
+            # Check for available browser with matching config
+            for i, browser_info in enumerate(self.browsers):
+                browser, browser_config = browser_info
+                if (browser_config["headless"] == headless and
+                    browser_config["slow_mo"] == slow_mo and
+                    browser_config["proxy"] == proxy):
+                    # Update last used time
+                    self.last_used[id(browser)] = current_time
+                    return browser
+
+            # Create new browser if under limit
+            if len(self.browsers) < self.max_browsers:
+                try:
+                    browser = AmazonConnection(
+                        headless=headless,
+                        slow_mo=slow_mo,
+                        proxy=proxy,
+                        proxies=proxies
+                    )
+                    await browser.start()
+                    self.browsers.append((browser, {
+                        "headless": headless,
+                        "slow_mo": slow_mo,
+                        "proxy": proxy
+                    }))
+                    self.last_used[id(browser)] = current_time
+                    return browser
+                except Exception as e:
+                    logger.error(f"Error creating browser: {str(e)}")
+                    # If we can't create a new browser, try to reuse an existing one
+                    if self.browsers:
+                        browser, _ = self.browsers[0]
+                        self.last_used[id(browser)] = current_time
+                        return browser
+                    raise  # Re-raise if we have no browsers at all
+
+            # If at limit, reuse least recently used browser
+            least_recent_id = min(self.last_used, key=self.last_used.get)
+            for i, (browser, _) in enumerate(self.browsers):
+                if id(browser) == least_recent_id:
+                    try:
+                        await browser.close()
+                        new_browser = AmazonConnection(
+                            headless=headless,
+                            slow_mo=slow_mo,
+                            proxy=proxy,
+                            proxies=proxies
+                        )
+                        await new_browser.start()
+                        self.browsers[i] = (new_browser, {
+                            "headless": headless,
+                            "slow_mo": slow_mo,
+                            "proxy": proxy
+                        })
+                        self.last_used[id(new_browser)] = current_time
+                        del self.last_used[least_recent_id]
+                        return new_browser
+                    except Exception as e:
+                        logger.error(f"Error recreating browser: {str(e)}")
+                        # Keep using the old browser if we can't create a new one
+                        self.last_used[least_recent_id] = current_time
+                        return browser
+
+    async def _close_browser(self, browser_id):
+        """Close and remove a browser from the pool."""
+        for i, (browser, _) in enumerate(self.browsers):
+            if id(browser) == browser_id:
+                await browser.close()
+                self.browsers.pop(i)
+                del self.last_used[browser_id]
+                break
+
+    async def close_all(self):
+        """Close all browsers in the pool."""
+        for browser, _ in self.browsers:
+            await browser.close()
+        self.browsers = []
+        self.last_used = {}
+
 class AmazonConnection:
     """Main class for handling Amazon website interactions."""
 
     BASE_URL = "https://www.amazon.com"
-    USER_AGENTS = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36 Edg/92.0.902.55"
-    ]
 
     def __init__(self, headless: bool = True, slow_mo: int = 50, proxy: Optional[str] = None, proxies: Optional[List[str]] = None):
         """Initialize the Amazon connection.
@@ -100,7 +217,7 @@ class AmazonConnection:
         height = random.randint(768, 1080)
 
         # Add random user agent rotation
-        self.user_agent = random.choice(self.USER_AGENTS)
+        self.user_agent = random.choice(USER_AGENTS)
 
         # Get proxy if available
         proxy_server = await self.get_next_proxy()
@@ -171,23 +288,11 @@ class AmazonConnection:
             delay = random.uniform(0.5, 2.0)
             await asyncio.sleep(delay)
 
-        # Add mouse movement simulation
-        async def random_mouse_movement():
-            x = random.randint(100, 800)
-            y = random.randint(100, 600)
-            await self.page.mouse.move(x, y)
-
         # Add scroll behavior
         async def random_scroll():
             scroll_amount = random.randint(300, 700)
             await self.page.evaluate(f"window.scrollBy(0, {scroll_amount})")
             await random_delay()
-
-        # Intercept and modify page to add these behaviors
-        await self.page.route("**/*", lambda route: route.continue_())
-
-        # Add event listeners for navigation
-        self.page.on("load", lambda: asyncio.create_task(random_scroll()))
 
     async def close(self):
         """Close all browser resources."""
@@ -503,8 +608,17 @@ class AmazonConnection:
         logger.info(f"Extracted details for product: {product_details.get('title', 'Unknown')}")
         return product_details
 
+    @with_retry(max_retries=3, retry_delay=2)
     async def _navigate_with_retry(self, url: str, max_retries: int = 3) -> bool:
-        """Navigate to a URL with retry logic."""
+        """Navigate to a URL with retry logic and rate limiting."""
+        # Check if already on the requested URL
+        if self.page and self.page.url == url:
+            logger.debug(f"Already on requested URL: {url}")
+            return True
+
+        # Wait for rate limiter before navigation
+        await rate_limiter.wait()
+
         for attempt in range(max_retries):
             try:
                 response = await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -523,8 +637,9 @@ class AmazonConnection:
             except Exception as e:
                 logger.error(f"Navigation error on attempt {attempt+1}: {str(e)}")
 
-            # Wait before retry
-            await asyncio.sleep(random.uniform(2, 5))
+            # Wait before retry with exponential backoff
+            backoff_time = 2 * (2 ** attempt)
+            await asyncio.sleep(backoff_time)
 
         logger.error(f"Failed to navigate to {url} after {max_retries} attempts")
         return False
@@ -604,29 +719,17 @@ class AmazonConnection:
         products = []
 
         # Check if we're on a CAPTCHA page
-        captcha_element = await self.page.query_selector("form[action='/errors/validateCaptcha']")
-        if captcha_element:
-            logger.warning("CAPTCHA detected! Amazon is blocking automated access.")
-            # Take a screenshot for debugging
-            await self.page.screenshot(path="amazon_captcha.png")
-            return products
+        for captcha_selector in SELECTORS["captcha_selectors"]:
+            captcha_element = await self.page.query_selector(captcha_selector)
+            if captcha_element:
+                logger.warning(f"CAPTCHA detected with selector: {captcha_selector}")
+                return products
 
         # Wait for search results to load
-        result_found = await self._wait_for_element("div.s-result-list", timeout=5000)
-        if not result_found:
-            logger.warning("Search results element not found. Page structure may have changed.")
-            # Try alternative selectors
-            result_found = await self._wait_for_element("div.s-search-results", timeout=5000)
+        await self._wait_for_element(SELECTORS["search_results_container"], timeout=5000)
 
-        # Debug: Log the page HTML
-        html = await self.page.content()
-        logger.debug(f"Page HTML length: {len(html)}")
-        logger.debug(f"Page URL: {self.page.url}")
-
-        # Get all product cards - try different selectors
-        product_cards = await self.page.query_selector_all("div.s-result-item[data-component-type='s-search-result']")
-        if not product_cards:
-            product_cards = await self.page.query_selector_all("div.sg-col-4-of-24")
+        # Get all product cards
+        product_cards = await self.page.query_selector_all(SELECTORS["product_card"])
 
         logger.info(f"Found {len(product_cards)} product cards")
 
@@ -639,20 +742,9 @@ class AmazonConnection:
                 # Extract product information
                 product = await self.extract_product_data(card)
 
-                # Check for Prime badge
-                prime_eligible = False
-                try:
-                    prime_elements = await card.query_selector_all("i.a-icon-prime")
-                    prime_eligible = len(prime_elements) > 0
-                except Exception as e:
-                    logger.debug(f"Error checking Prime status: {e}")
-
-                product["prime_eligible"] = prime_eligible  # Add Prime status
-
                 # Add to products list if we have at least title and URL
                 if product.get("title") and product.get("url"):
                     products.append(product)
-                    logger.info(f"Found product: {product.get('title')}")
 
             except Exception as e:
                 logger.warning(f"Error extracting product {i}: {str(e)}")
@@ -664,11 +756,9 @@ class AmazonConnection:
         product = {}
 
         # Title extraction with fallbacks
-        for selector in ["h2 a span", "h2 span", ".a-text-normal"]:
-            title_element = await card.query_selector(selector)
-            if title_element:
-                product["title"] = await title_element.text_content()
-                break
+        title_element = await card.query_selector(SELECTORS["product_title"])
+        if title_element:
+            product["title"] = await title_element.text_content()
 
         # ASIN and URL extraction
         asin = await card.get_attribute("data-asin")
@@ -677,33 +767,27 @@ class AmazonConnection:
             product["url"] = f"https://www.amazon.com/dp/{asin}"
         else:
             # Fallback to link extraction
-            link_element = await card.query_selector("a.a-link-normal")
+            link_element = await card.query_selector("h2 a.a-link-normal")
             if link_element:
                 href = await link_element.get_attribute("href")
-                if "/dp/" in href:
-                    asin = href.split("/dp/")[1].split("/")[0].split("?")[0]
-                    product["asin"] = asin
-                    product["url"] = f"https://www.amazon.com/dp/{asin}"
+                if href:
+                    product["url"] = f"https://www.amazon.com{href}" if not href.startswith('http') else href
+                    # Try to extract ASIN from URL
+                    if "/dp/" in href:
+                        asin = href.split("/dp/")[1].split("/")[0].split("?")[0]
+                        product["asin"] = asin
 
-        # Price extraction with fallbacks
-        for selector in [".a-price .a-offscreen", "span.a-price", ".a-color-price"]:
-            price_element = await card.query_selector(selector)
-            if price_element:
-                product["price"] = await price_element.text_content()
-                break
+        # Price extraction
+        price_element = await card.query_selector(SELECTORS["product_price"])
+        if price_element:
+            product["price"] = await price_element.text_content()
 
         # Prime eligibility
-        prime_eligible = False
-        try:
-            prime_elements = await card.query_selector_all("i.a-icon-prime")
-            prime_eligible = len(prime_elements) > 0
-        except Exception as e:
-            logger.debug(f"Error checking Prime status: {e}")
-
-        product["prime_eligible"] = prime_eligible
+        prime_element = await card.query_selector(SELECTORS["prime_badge"])
+        product["prime_eligible"] = prime_element is not None
 
         # Rating extraction
-        rating_element = await card.query_selector(".a-icon-star-small .a-icon-alt, .a-icon-star .a-icon-alt")
+        rating_element = await card.query_selector(SELECTORS["product_rating"])
         if rating_element:
             rating_text = await rating_element.text_content()
             if "out of 5 stars" in rating_text:
@@ -756,7 +840,7 @@ class AmazonConnection:
 
         return specs
 
-    async def _extract_product_images(self) -> List[str]:
+    async def _extract_product_images(self, max_images: int = 5) -> List[str]:
         """Extract product images from the product page."""
         images = []
 
@@ -764,6 +848,9 @@ class AmazonConnection:
             # Try to get images from the image gallery
             img_elements = await self.page.query_selector_all("#altImages img")
             for img in img_elements:
+                if len(images) >= max_images:
+                    break
+
                 try:
                     src = await img.get_attribute("src")
                     if src and "sprite" not in src and src not in images:
@@ -1163,12 +1250,45 @@ class AmazonConnection:
         logger.info(f"Proxy rotated, new user agent: {self.user_agent}")
         return True
 
+# Create global instances
+rate_limiter = RateLimiter()
+browser_pool = BrowserPool()
 
+# Helper function to get or create a browser
+async def get_or_create_browser(config: Dict[str, Any]) -> "AmazonConnection":
+    """Get existing browser from config or create a new one using the pool."""
+    browser = config.get("browser")
+
+    if browser is None or not isinstance(browser, AmazonConnection):
+        logger.info("Getting browser from pool")
+        browser = await browser_pool.get_browser(
+            headless=config.get("headless", True),
+            slow_mo=config.get("browser_slow_mo", 50),
+            proxy=config.get("browser_proxy", None),
+            proxies=config.get("browser_proxies", None)
+        )
+        config["browser"] = browser
+        config["browser_from_pool"] = True
+
+    return browser
+
+# Helper function to return a browser to the pool
+async def close_browser_if_created(config: Dict[str, Any]) -> None:
+    """Return browser to the pool if it was created by this tool."""
+    if config.get("browser_from_pool") and config.get("browser"):
+        logger.info("Returning browser to pool")
+        # We don't actually close it, just remove the reference
+        config["browser"] = None
+        config["browser_from_pool"] = False
+
+# Convenience function with retry
+@with_retry(max_retries=3, retry_delay=2)
 async def search_amazon(
     query: str,
     filters: Optional[Dict[str, Any]] = None,
     proxy: Optional[str] = None,
-    proxies: Optional[List[str]] = None
+    proxies: Optional[List[str]] = None,
+    config: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Convenience function to search Amazon and apply filters.
@@ -1178,15 +1298,39 @@ async def search_amazon(
         filters: Optional filters to apply
         proxy: Single proxy to use (format: "http://user:pass@host:port")
         proxies: List of proxies to rotate through
+        config: Optional configuration dictionary to store browser instance
 
     Returns:
         List of product dictionaries
     """
-    async with AmazonConnection(headless=False, proxy=proxy, proxies=proxies) as amazon:
-        products = await amazon.search_products(query)
+    # Initialize config if not provided
+    if config is None:
+        config = {}
 
+    # Set proxy options in config
+    if proxy:
+        config["browser_proxy"] = proxy
+    if proxies:
+        config["browser_proxies"] = proxies
+
+    try:
+        # Wait for rate limiter
+        await rate_limiter.wait()
+
+        # Get or create browser from pool
+        browser = await get_or_create_browser(config)
+
+        # Execute search
+        products = await browser.search_products(query)
+
+        # Apply filters if provided
         if filters:
-            products = await amazon.apply_filters(filters)
+            products = await browser.apply_filters(filters)
 
         return products
+
+    finally:
+        # Return browser to pool if we created it
+        if not config.get("keep_browser_open"):
+            await close_browser_if_created(config)
 

@@ -41,8 +41,7 @@ services:
         environment:
             REDIS_URI: redis://langgraph-redis:6379
             POSTGRES_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
-            SUPABASE_URL: ${SUPABASE_URL}
-            SUPABASE_KEY: ${SUPABASE_KEY}
             OPENAI_API_KEY: ${OPENAI_API_KEY}
             ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
             LANGSMITH_API_KEY: ${LANGSMITH_API_KEY}
+        command: sh -c "playwright install"
