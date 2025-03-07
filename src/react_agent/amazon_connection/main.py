@@ -138,6 +138,31 @@ class BrowserPool:
         self.browsers = []
         self.last_used = {}
 
+    async def get_or_create_browser(self, config: Dict[str, Any]) -> "AmazonConnection":
+        """Get existing browser from config or create a new one using the pool."""
+        browser = config.get("browser")
+
+        if browser is None or not isinstance(browser, AmazonConnection):
+            logger.info("Getting browser from pool")
+            browser = await self.get_browser(
+                headless=config.get("headless", True),
+                slow_mo=config.get("browser_slow_mo", 50),
+                proxy=config.get("browser_proxy", None),
+                proxies=config.get("browser_proxies", None)
+            )
+            config["browser"] = browser
+            config["browser_from_pool"] = True
+
+        return browser
+
+    async def close_browser_if_created(self, config: Dict[str, Any]) -> None:
+        """Return browser to the pool if it was created by this tool."""
+        if config.get("browser_from_pool") and config.get("browser"):
+            logger.info("Returning browser to pool")
+            # We don't actually close it, just remove the reference
+            config["browser"] = None
+            config["browser_from_pool"] = False
+
 class AmazonConnection:
     """Main class for handling Amazon website interactions."""
 
@@ -1253,84 +1278,3 @@ class AmazonConnection:
 # Create global instances
 rate_limiter = RateLimiter()
 browser_pool = BrowserPool()
-
-# Helper function to get or create a browser
-async def get_or_create_browser(config: Dict[str, Any]) -> "AmazonConnection":
-    """Get existing browser from config or create a new one using the pool."""
-    browser = config.get("browser")
-
-    if browser is None or not isinstance(browser, AmazonConnection):
-        logger.info("Getting browser from pool")
-        browser = await browser_pool.get_browser(
-            headless=config.get("headless", True),
-            slow_mo=config.get("browser_slow_mo", 50),
-            proxy=config.get("browser_proxy", None),
-            proxies=config.get("browser_proxies", None)
-        )
-        config["browser"] = browser
-        config["browser_from_pool"] = True
-
-    return browser
-
-# Helper function to return a browser to the pool
-async def close_browser_if_created(config: Dict[str, Any]) -> None:
-    """Return browser to the pool if it was created by this tool."""
-    if config.get("browser_from_pool") and config.get("browser"):
-        logger.info("Returning browser to pool")
-        # We don't actually close it, just remove the reference
-        config["browser"] = None
-        config["browser_from_pool"] = False
-
-# Convenience function with retry
-@with_retry(max_retries=3, retry_delay=2)
-async def search_amazon(
-    query: str,
-    filters: Optional[Dict[str, Any]] = None,
-    proxy: Optional[str] = None,
-    proxies: Optional[List[str]] = None,
-    config: Optional[Dict[str, Any]] = None
-) -> List[Dict[str, Any]]:
-    """
-    Convenience function to search Amazon and apply filters.
-
-    Args:
-        query: Search query
-        filters: Optional filters to apply
-        proxy: Single proxy to use (format: "http://user:pass@host:port")
-        proxies: List of proxies to rotate through
-        config: Optional configuration dictionary to store browser instance
-
-    Returns:
-        List of product dictionaries
-    """
-    # Initialize config if not provided
-    if config is None:
-        config = {}
-
-    # Set proxy options in config
-    if proxy:
-        config["browser_proxy"] = proxy
-    if proxies:
-        config["browser_proxies"] = proxies
-
-    try:
-        # Wait for rate limiter
-        await rate_limiter.wait()
-
-        # Get or create browser from pool
-        browser = await get_or_create_browser(config)
-
-        # Execute search
-        products = await browser.search_products(query)
-
-        # Apply filters if provided
-        if filters:
-            products = await browser.apply_filters(filters)
-
-        return products
-
-    finally:
-        # Return browser to pool if we created it
-        if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
-

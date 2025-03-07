@@ -185,12 +185,12 @@ class BrowserContextManager:
         await self.rate_limiter.wait()
 
         # Get or create browser
-        from .main import get_or_create_browser
-        self.browser = await get_or_create_browser(self.config)
+        from .main import browser_pool
+        self.browser = await browser_pool.get_or_create_browser(self.config)
         return self.browser
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not self.config.get("keep_browser_open"):
-            from .main import close_browser_if_created
-            await close_browser_if_created(self.config)
+            from .main import browser_pool
+            await browser_pool.close_browser_if_created(self.config)

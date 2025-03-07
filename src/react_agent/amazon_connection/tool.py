@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableConfig
 import logging
 from functools import wraps
 
-from .main import AmazonConnection, browser_pool, get_or_create_browser, close_browser_if_created
+from .main import AmazonConnection, browser_pool
 from .utils import ProductInfo, ErrorResponse, create_error_response, with_retry, SELECTORS, RateLimiter, BrowserContextManager
 
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ async def search_amazon_products(
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
+            await browser_pool.close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
 @amazon_tool
@@ -179,7 +179,7 @@ async def find_deals(
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
+            await browser_pool.close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
 @amazon_tool
@@ -246,7 +246,7 @@ async def compare_products(
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
+            await browser_pool.close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
 @amazon_tool
@@ -298,7 +298,7 @@ async def find_bestsellers(
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
+            await browser_pool.close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
 @amazon_tool
@@ -361,7 +361,7 @@ async def get_product_details(
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
+            await browser_pool.close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
 @amazon_tool
@@ -415,7 +415,7 @@ async def get_product_reviews(
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
         if not config.get("keep_browser_open"):
-            await close_browser_if_created(config)
+            await browser_pool.close_browser_if_created(config)
 
 # List of available Amazon tools
 AMAZON_TOOLS = [
