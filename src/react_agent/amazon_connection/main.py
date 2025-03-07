@@ -6,7 +6,7 @@ import random
 import time
 from typing import Dict, List, Optional, Union, Any
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright, Response
+from playwright.async_api import Response
 from urllib.parse import urlencode, quote_plus
 
 # Import from browser_management instead of defining locally

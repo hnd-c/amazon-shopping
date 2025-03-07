@@ -10,7 +10,7 @@ from functools import wraps
 
 # Import from browser_management instead of defining locally or importing from main
 from .main import AmazonConnection
-from .browser_management import browser_pool, rate_limiter, amazon_tool
+from .browser_management import Browser, browser_pool, rate_limiter, amazon_tool
 from .utils import ProductInfo, ErrorResponse, create_error_response, with_retry, SELECTORS
 
 logger = logging.getLogger(__name__)
