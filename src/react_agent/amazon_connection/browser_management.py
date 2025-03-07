@@ -246,10 +246,32 @@ class Browser:
                     await asyncio.sleep(random.uniform(1.0, 2.0))
                     return response
 
-                # Check for CAPTCHA or blocking
+                # Check for 503 error or CAPTCHA
+                if response and response.status == 503:
+                    logger.warning(f"503 Service Unavailable detected on attempt {attempt+1}")
+
+                    # Try to rotate proxy if available
+                    if self.proxies and len(self.proxies) > 0:
+                        logger.info("Rotating proxy due to 503 error")
+                        await self.rotate_proxy()
+
+                    if attempt < max_retries - 1:
+                        # Add increasing delay between retries
+                        delay = retry_delay * (attempt + 1) * (1 + random.random())
+                        logger.info(f"Waiting {delay:.2f}s before retry")
+                        await asyncio.sleep(delay)
+                        continue
+
+                # Check for CAPTCHA
                 for captcha_selector in ["input[name='amzn-captcha-submit']", "img[src*='captcha']"]:
                     if await self.page.query_selector(captcha_selector):
                         logger.warning(f"CAPTCHA detected on attempt {attempt+1}")
+
+                        # Try to rotate proxy if available
+                        if self.proxies and len(self.proxies) > 0:
+                            logger.info("Rotating proxy due to CAPTCHA")
+                            await self.rotate_proxy()
+
                         if attempt < max_retries - 1:
                             await asyncio.sleep(retry_delay * (attempt + 1))
                             continue
