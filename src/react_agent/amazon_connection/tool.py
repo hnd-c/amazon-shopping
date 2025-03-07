@@ -121,6 +121,7 @@ async def search_amazon_products(
             await close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
+@amazon_tool
 async def find_deals(
     category: str,
     *,
@@ -128,16 +129,11 @@ async def find_deals(
     prime_only: bool = True,
     min_rating: Optional[int] = 4,
     max_results: int = 5,
+    browser: Optional[Any] = None,  # Added browser parameter
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[List[Dict[str, Any]], ErrorResponse]:
     """Find current deals and discounts on Amazon in a specific category."""
     try:
-        # Wait for rate limiter
-        await rate_limiter.wait()
-
-        # Get or create browser
-        browser = await get_or_create_browser(config)
-
         # Build filters for deals search
         filters = {
             "deals": True,
@@ -186,16 +182,15 @@ async def find_deals(
             await close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
+@amazon_tool
 async def compare_products(
     product_urls: str,
     *,
+    browser: Optional[Any] = None,
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[Dict[str, Any], ErrorResponse]:
     """Compare multiple Amazon products side by side."""
     try:
-        # Wait for rate limiter
-        await rate_limiter.wait()
-
         logger.info(f"Comparing products")
 
         # Split URLs
@@ -206,13 +201,9 @@ async def compare_products(
         if len(urls) > 5:
             urls = urls[:5]  # Limit to 5 products for comparison
 
-        # Get or create browser
-        browser = await get_or_create_browser(config)
-
         # Fetch product details concurrently
         async def fetch_product(url):
-            # Wait for rate limiter before each request
-            await rate_limiter.wait()
+            # Remove redundant rate limiter wait - the decorator already handles this
             return await browser.get_product_details(url)
 
         # Use gather to run requests in parallel
@@ -258,22 +249,18 @@ async def compare_products(
             await close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
+@amazon_tool
 async def find_bestsellers(
     category: str,
     *,
     prime_only: bool = False,
     max_results: int = 5,
+    browser: Optional[Any] = None,  # Add browser parameter
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[List[Dict[str, Any]], ErrorResponse]:
     """Find bestselling products in a specific category on Amazon."""
     try:
-        # Wait for rate limiter
-        await rate_limiter.wait()
-
         logger.info(f"Finding bestsellers in category: {category}")
-
-        # Get or create browser
-        browser = await get_or_create_browser(config)
 
         # Build filters for bestseller search
         filters = {
@@ -314,20 +301,16 @@ async def find_bestsellers(
             await close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
+@amazon_tool
 async def get_product_details(
     product_url: str,
     *,
+    browser: Optional[Any] = None,  # Add browser parameter
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[Dict[str, Any], ErrorResponse]:
     """Get detailed information about a specific Amazon product."""
     try:
-        # Wait for rate limiter
-        await rate_limiter.wait()
-
         logger.info(f"Getting details for product: {product_url}")
-
-        # Get or create browser
-        browser = await get_or_create_browser(config)
 
         logger.info(f"Fetching product details")
         details = await browser.get_product_details(product_url)
@@ -381,28 +364,23 @@ async def get_product_details(
             await close_browser_if_created(config)
 
 @with_retry(max_retries=3, retry_delay=2)
+@amazon_tool
 async def get_product_reviews(
     product_url: str,
     *,
     review_type: Optional[str] = None,
     max_reviews: int = 5,
+    browser: Optional[Any] = None,
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[Dict[str, Any], ErrorResponse]:
     """Get customer reviews for a specific Amazon product."""
     try:
-        # Wait for rate limiter
-        await rate_limiter.wait()
-
         logger.info(f"Getting reviews for product: {product_url}")
-
-        # Get or create browser
-        browser = await get_or_create_browser(config)
 
         logger.info(f"Fetching product details")
         details = await browser.get_product_details(product_url)
 
-        # Wait for rate limiter before getting reviews
-        await rate_limiter.wait()
+        # Remove redundant rate limiter wait - the decorator already handles this
         all_reviews = await browser.get_product_reviews(product_url)
 
         # Filter reviews if review_type is specified
