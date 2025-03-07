@@ -9,159 +9,13 @@ from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright, Response
 from urllib.parse import urlencode, quote_plus
 
-from .utils import with_retry, create_error_response, SELECTORS, USER_AGENTS, RateLimiter
+# Import from browser_management instead of defining locally
+from .browser_management import browser_pool, rate_limiter, USER_AGENTS
+from .utils import with_retry, create_error_response, SELECTORS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Forward reference for type checking
-if TYPE_CHECKING:
-    from .main import AmazonConnection
-
-class BrowserPool:
-    """Manages a pool of browser instances for reuse."""
-
-    def __init__(self, max_browsers=3, ttl_seconds=300, cleanup_interval=60):
-        self.browsers = []
-        self.max_browsers = max_browsers
-        self.ttl_seconds = ttl_seconds
-        self.last_used = {}
-        self.lock = asyncio.Lock()
-        self.cleanup_task = None
-        self.cleanup_interval = cleanup_interval
-
-    async def start_cleanup_task(self):
-        """Start the periodic cleanup task."""
-        if self.cleanup_task is None:
-            self.cleanup_task = asyncio.create_task(self._periodic_cleanup())
-
-    async def _periodic_cleanup(self):
-        """Periodically clean up expired browsers."""
-        while True:
-            await asyncio.sleep(self.cleanup_interval)
-            await self.cleanup_expired_browsers()
-
-    async def cleanup_expired_browsers(self):
-        """Clean up expired browsers."""
-        async with self.lock:
-            current_time = time.time()
-            for browser_id in list(self.last_used.keys()):
-                if current_time - self.last_used[browser_id] > self.ttl_seconds:
-                    await self._close_browser(browser_id)
-
-    async def get_browser(self, headless=True, slow_mo=50, proxy=None, proxies=None):
-        """Get an available browser from the pool or create a new one."""
-        async with self.lock:
-            # Clean up expired browsers
-            current_time = time.time()
-            for browser_id in list(self.last_used.keys()):
-                if current_time - self.last_used[browser_id] > self.ttl_seconds:
-                    await self._close_browser(browser_id)
-
-            # Check for available browser with matching config
-            for i, browser_info in enumerate(self.browsers):
-                browser, browser_config = browser_info
-                if (browser_config["headless"] == headless and
-                    browser_config["slow_mo"] == slow_mo and
-                    browser_config["proxy"] == proxy):
-                    # Update last used time
-                    self.last_used[id(browser)] = current_time
-                    return browser
-
-            # Create new browser if under limit
-            if len(self.browsers) < self.max_browsers:
-                try:
-                    browser = AmazonConnection(
-                        headless=headless,
-                        slow_mo=slow_mo,
-                        proxy=proxy,
-                        proxies=proxies
-                    )
-                    await browser.start()
-                    self.browsers.append((browser, {
-                        "headless": headless,
-                        "slow_mo": slow_mo,
-                        "proxy": proxy
-                    }))
-                    self.last_used[id(browser)] = current_time
-                    return browser
-                except Exception as e:
-                    logger.error(f"Error creating browser: {str(e)}")
-                    # If we can't create a new browser, try to reuse an existing one
-                    if self.browsers:
-                        browser, _ = self.browsers[0]
-                        self.last_used[id(browser)] = current_time
-                        return browser
-                    raise  # Re-raise if we have no browsers at all
-
-            # If at limit, reuse least recently used browser
-            least_recent_id = min(self.last_used, key=self.last_used.get)
-            for i, (browser, _) in enumerate(self.browsers):
-                if id(browser) == least_recent_id:
-                    try:
-                        await browser.close()
-                        new_browser = AmazonConnection(
-                            headless=headless,
-                            slow_mo=slow_mo,
-                            proxy=proxy,
-                            proxies=proxies
-                        )
-                        await new_browser.start()
-                        self.browsers[i] = (new_browser, {
-                            "headless": headless,
-                            "slow_mo": slow_mo,
-                            "proxy": proxy
-                        })
-                        self.last_used[id(new_browser)] = current_time
-                        del self.last_used[least_recent_id]
-                        return new_browser
-                    except Exception as e:
-                        logger.error(f"Error recreating browser: {str(e)}")
-                        # Keep using the old browser if we can't create a new one
-                        self.last_used[least_recent_id] = current_time
-                        return browser
-
-    async def _close_browser(self, browser_id):
-        """Close and remove a browser from the pool."""
-        for i, (browser, _) in enumerate(self.browsers):
-            if id(browser) == browser_id:
-                await browser.close()
-                self.browsers.pop(i)
-                del self.last_used[browser_id]
-                break
-
-    async def close_all(self):
-        """Close all browsers in the pool."""
-        for browser, _ in self.browsers:
-            await browser.close()
-        self.browsers = []
-        self.last_used = {}
-
-    async def get_or_create_browser(self, config: Dict[str, Any]) -> "AmazonConnection":
-        """Get existing browser from config or create a new one using the pool."""
-        browser = config.get("browser")
-
-        if browser is None or not isinstance(browser, AmazonConnection):
-            logger.info("Getting browser from pool")
-            browser = await self.get_browser(
-                headless=config.get("headless", True),
-                slow_mo=config.get("browser_slow_mo", 50),
-                proxy=config.get("browser_proxy", None),
-                proxies=config.get("browser_proxies", None)
-            )
-            config["browser"] = browser
-            config["browser_from_pool"] = True
-
-        return browser
-
-    async def close_browser_if_created(self, config: Dict[str, Any]) -> None:
-        """Return browser to the pool if it was created by this tool."""
-        if config.get("browser_from_pool") and config.get("browser"):
-            logger.info("Returning browser to pool")
-            # We don't actually close it, just remove the reference
-            config["browser"] = None
-            config["browser_from_pool"] = False
 
 class AmazonConnection:
     """Main class for handling Amazon website interactions."""
@@ -1274,7 +1128,3 @@ class AmazonConnection:
 
         logger.info(f"Proxy rotated, new user agent: {self.user_agent}")
         return True
-
-# Create global instances
-rate_limiter = RateLimiter()
-browser_pool = BrowserPool()

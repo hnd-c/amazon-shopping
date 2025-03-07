@@ -8,29 +8,12 @@ from langchain_core.runnables import RunnableConfig
 import logging
 from functools import wraps
 
-from .main import AmazonConnection, browser_pool
-from .utils import ProductInfo, ErrorResponse, create_error_response, with_retry, SELECTORS, RateLimiter, BrowserContextManager
+# Import from browser_management instead of defining locally or importing from main
+from .main import AmazonConnection
+from .browser_management import browser_pool, rate_limiter, amazon_tool
+from .utils import ProductInfo, ErrorResponse, create_error_response, with_retry, SELECTORS
 
 logger = logging.getLogger(__name__)
-
-# Create a global rate limiter instance
-rate_limiter = RateLimiter()
-
-# Define the amazon_tool decorator BEFORE using it
-def amazon_tool(func):
-    """Decorator for Amazon tool functions to handle common patterns."""
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        # Extract config from kwargs
-        config = kwargs.get("config", {})
-
-        # Use the browser context manager with the global rate_limiter
-        async with BrowserContextManager(config, rate_limiter) as browser:
-            # Add browser to kwargs for the function to use
-            kwargs["browser"] = browser
-            return await func(*args, **kwargs)
-
-    return wrapper
 
 # Apply the retry decorator to all tool functions
 @with_retry(max_retries=3, retry_delay=2)

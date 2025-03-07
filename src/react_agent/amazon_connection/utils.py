@@ -6,6 +6,9 @@ import time
 from functools import wraps
 from typing import Any, Dict, Optional, TypedDict
 
+# Import from browser_management instead of defining locally or importing from main
+from .browser_management import browser_pool, rate_limiter, BrowserContextManager, USER_AGENTS
+
 logger = logging.getLogger(__name__)
 
 # Define standard return types
@@ -24,28 +27,6 @@ class ErrorResponse(TypedDict):
     error: str
     error_type: Optional[str]
     success: bool
-
-class RateLimiter:
-    """Implements rate limiting for Amazon requests."""
-
-    def __init__(self, requests_per_minute=20):
-        self.requests_per_minute = requests_per_minute
-        self.interval = 60 / requests_per_minute  # seconds between requests
-        self.last_request_time = 0
-        self.lock = asyncio.Lock()
-
-    async def wait(self):
-        """Wait if necessary to comply with rate limits."""
-        async with self.lock:
-            current_time = time.time()
-            elapsed = current_time - self.last_request_time
-
-            if elapsed < self.interval:
-                wait_time = self.interval - elapsed
-                logger.debug(f"Rate limiting: waiting {wait_time:.2f}s")
-                await asyncio.sleep(wait_time)
-
-            self.last_request_time = time.time()
 
 # Create a standardized error response function
 def create_error_response(error_message, error_type=None, additional_info=None):
@@ -162,35 +143,3 @@ SELECTORS = {
         "input[id='captchacharacters']"
     ]
 }
-
-# Common user agents
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36 Edg/92.0.902.55"
-]
-
-class BrowserContextManager:
-    """Context manager for handling browser lifecycle in tool functions."""
-
-    def __init__(self, config, rate_limiter):
-        self.config = config
-        self.rate_limiter = rate_limiter
-        self.browser = None
-
-    async def __aenter__(self):
-        # Wait for rate limiter
-        await self.rate_limiter.wait()
-
-        # Get or create browser
-        from .main import browser_pool
-        self.browser = await browser_pool.get_or_create_browser(self.config)
-        return self.browser
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        # Only close the browser if we're not in a chain of Amazon tool calls
-        if not self.config.get("keep_browser_open"):
-            from .main import browser_pool
-            await browser_pool.close_browser_if_created(self.config)
