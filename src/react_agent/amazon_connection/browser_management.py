@@ -175,7 +175,7 @@ class BrowserPool:
         """Get existing browser from config or create a new one using the pool."""
         browser = config.get("browser")
 
-        if browser is None or not isinstance(browser, "AmazonConnection"):
+        if browser is None or not isinstance(browser, AmazonConnection):
             logger.info("Getting browser from pool")
             browser = await self.get_browser(
                 headless=config.get("headless", True),

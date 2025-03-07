@@ -4,7 +4,7 @@ import asyncio
 import logging
 import random
 import time
-from typing import Dict, List, Optional, Union, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Union, Any
 
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright, Response
 from urllib.parse import urlencode, quote_plus
