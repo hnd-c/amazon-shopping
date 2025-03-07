@@ -10,185 +10,21 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from urllib.parse import urlencode, quote_plus
 
 # Import from browser_management instead of defining locally
-from .browser_management import browser_pool, rate_limiter, USER_AGENTS
+from .browser_management import Browser, browser_pool, rate_limiter, USER_AGENTS
 from .utils import with_retry, create_error_response, SELECTORS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-class AmazonConnection:
+class AmazonConnection(Browser):
     """Main class for handling Amazon website interactions."""
 
     BASE_URL = "https://www.amazon.com"
 
     def __init__(self, headless: bool = True, slow_mo: int = 50, proxy: Optional[str] = None, proxies: Optional[List[str]] = None):
-        """Initialize the Amazon connection.
-
-        Args:
-            headless: Whether to run the browser in headless mode
-            slow_mo: Slow down operations by this amount of milliseconds
-            proxy: Single proxy to use (format: "http://user:pass@host:port")
-            proxies: List of proxies to rotate through
-        """
-        self.headless = headless
-        self.slow_mo = slow_mo
-        self.proxy = proxy
-        self.proxies = proxies
-        self.current_proxy_index = 0
-        self.playwright = None
-        self.browser = None
-        self.context = None
-        self.page = None
-        self.user_agent = None
-
-    async def __aenter__(self):
-        """Set up the connection when entering a context."""
-        await self.start()
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Clean up resources when exiting a context."""
-        await self.close()
-
-    async def start(self):
-        """Start the browser and create a new context."""
-        logger.info("Starting Amazon connection")
-        self.playwright = await async_playwright().start()
-
-        # Launch with more stealth options
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
-            slow_mo=self.slow_mo,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--disable-features=IsolateOrigins,site-per-process',
-                '--disable-site-isolation-trials',
-                '--disable-web-security',
-                '--disable-features=BlockInsecurePrivateNetworkRequests'
-            ]
-        )
-
-        # Create a context with a random user agent and more realistic settings
-        await self.setup_stealth_browser()
-
-        # Create a page
-        self.page = await self.context.new_page()
-
-        # Add human-like behavior AFTER page is created
-        await self._add_human_behavior()
-
-        logger.info(f"Connection started with user agent: {self.user_agent}")
-
-    async def get_next_proxy(self):
-        """Get the next proxy from the rotation list."""
-        if not self.proxies:
-            return self.proxy
-
-        proxy = self.proxies[self.current_proxy_index]
-        self.current_proxy_index = (self.current_proxy_index + 1) % len(self.proxies)
-        return proxy
-
-    async def setup_stealth_browser(self):
-        """Configure browser for maximum stealth."""
-        # Add random viewport size within normal ranges
-        width = random.randint(1024, 1920)
-        height = random.randint(768, 1080)
-
-        # Add random user agent rotation
-        self.user_agent = random.choice(USER_AGENTS)
-
-        # Get proxy if available
-        proxy_server = await self.get_next_proxy()
-        proxy_config = None
-
-        if proxy_server:
-            logger.info(f"Using proxy: {proxy_server.split('@')[-1] if '@' in proxy_server else proxy_server}")
-            proxy_config = {
-                "server": proxy_server,
-                "bypass": "localhost,127.0.0.1"
-            }
-
-        # Configure browser context with realistic settings
-        context_options = {
-            "user_agent": self.user_agent,
-            "viewport": {"width": width, "height": height},
-            "locale": "en-US",
-            "timezone_id": "America/New_York",
-            "geolocation": {"latitude": 40.7128, "longitude": -74.0060},
-            "permissions": ["geolocation"],
-            "java_script_enabled": True,
-            "has_touch": False,
-            "is_mobile": False,
-            "color_scheme": "light"
-        }
-
-        # Add proxy if available
-        if proxy_config:
-            context_options["proxy"] = proxy_config
-
-        self.context = await self.browser.new_context(**context_options)
-
-        # Add realistic headers
-        await self.context.set_extra_http_headers({
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-            "DNT": "1"
-        })
-
-    async def _route_handler(self, route, request):
-        """Handle requests to modify headers and block unnecessary resources."""
-        # Block unnecessary resources to improve performance
-        if request.resource_type in ["image", "media", "font"]:
-            if random.random() < 0.7:  # Allow some resources to load for better stealth
-                await route.abort()
-                return
-
-        # Add additional headers for stealth
-        headers = {
-            **request.headers,
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        }
-
-        await route.continue_(headers=headers)
-
-    async def _add_human_behavior(self):
-        """Add human-like behavior to page interactions."""
-        # Add random delays between actions
-        async def random_delay():
-            delay = random.uniform(0.5, 2.0)
-            await asyncio.sleep(delay)
-
-        # Add scroll behavior
-        async def random_scroll():
-            scroll_amount = random.randint(300, 700)
-            await self.page.evaluate(f"window.scrollBy(0, {scroll_amount})")
-            await random_delay()
-
-    async def close(self):
-        """Close all browser resources."""
-        logger.info("Closing Amazon connection")
-        if self.page:
-            await self.page.close()
-        if self.context:
-            await self.context.close()
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
-
-        self.page = None
-        self.context = None
-        self.browser = None
-        self.playwright = None
+        """Initialize the Amazon connection."""
+        super().__init__(headless, slow_mo, proxy, proxies)
 
     async def search_products(self, query: str, max_results: int = 20) -> List[Dict[str, Any]]:
         """
@@ -487,112 +323,6 @@ class AmazonConnection:
         logger.info(f"Extracted details for product: {product_details.get('title', 'Unknown')}")
         return product_details
 
-    @with_retry(max_retries=3, retry_delay=2)
-    async def _navigate_with_retry(self, url: str, max_retries: int = 3) -> bool:
-        """Navigate to a URL with retry logic and rate limiting."""
-        # Check if already on the requested URL
-        if self.page and self.page.url == url:
-            logger.debug(f"Already on requested URL: {url}")
-            return True
-
-        # Wait for rate limiter before navigation
-        await rate_limiter.wait()
-
-        for attempt in range(max_retries):
-            try:
-                response = await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
-
-                # Add random delay to simulate human behavior
-                await asyncio.sleep(random.uniform(1, 3))
-
-                # Scroll down slightly to trigger lazy loading
-                await self.page.evaluate("window.scrollBy(0, 300)")
-                await asyncio.sleep(random.uniform(0.5, 1.5))
-
-                if response and response.ok:
-                    return True
-
-                logger.warning(f"Navigation attempt {attempt+1} failed: {response.status if response else 'No response'}")
-            except Exception as e:
-                logger.error(f"Navigation error on attempt {attempt+1}: {str(e)}")
-
-            # Wait before retry with exponential backoff
-            backoff_time = 2 * (2 ** attempt)
-            await asyncio.sleep(backoff_time)
-
-        logger.error(f"Failed to navigate to {url} after {max_retries} attempts")
-        return False
-
-    async def _wait_for_element(self, selector: str, timeout: int = 10000) -> bool:
-        """Wait for an element to be visible."""
-        try:
-            await self.page.wait_for_selector(selector, state="visible", timeout=timeout)
-            return True
-        except Exception as e:
-            logger.error(f"Timeout waiting for element {selector}: {str(e)}")
-            return False
-
-    async def _wait_for_navigation(self, timeout: int = 30000) -> bool:
-        """Wait for navigation to complete."""
-        try:
-            await self.page.wait_for_load_state("domcontentloaded", timeout=timeout)
-            await asyncio.sleep(random.uniform(1, 2))
-            return True
-        except Exception as e:
-            logger.error(f"Navigation timeout: {str(e)}")
-            return False
-
-    async def _click_with_retry(self, selector: str, max_retries: int = 3) -> bool:
-        """Click an element with retry logic."""
-        for attempt in range(max_retries):
-            try:
-                # Wait for element to be visible and clickable
-                await self.page.wait_for_selector(selector, state="visible", timeout=5000)
-
-                # Add slight delay before clicking
-                await asyncio.sleep(random.uniform(0.3, 0.7))
-
-                # Click the element
-                await self.page.click(selector)
-                return True
-            except Exception as e:
-                logger.warning(f"Click attempt {attempt+1} failed for {selector}: {str(e)}")
-                await asyncio.sleep(random.uniform(1, 2))
-
-        logger.error(f"Failed to click {selector} after {max_retries} attempts")
-        return False
-
-    async def _select_dropdown(self, selector_id: str, value: str) -> bool:
-        """Select an option from a dropdown."""
-        try:
-            await self.page.select_option(f"#{selector_id}", value=value)
-            return True
-        except Exception as e:
-            logger.error(f"Failed to select {value} from dropdown {selector_id}: {str(e)}")
-            return False
-
-    async def _get_text(self, selector: str) -> str:
-        """Get text content from an element."""
-        try:
-            element = await self.page.query_selector(selector)
-            if element:
-                return await element.text_content()
-        except Exception as e:
-            logger.warning(f"Failed to get text from {selector}: {str(e)}")
-
-        return ""
-
-    async def _get_attribute(self, selector: str, attribute: str) -> str:
-        """Get attribute value from an element."""
-        try:
-            element = await self.page.query_selector(selector)
-            if element:
-                return await element.get_attribute(attribute) or ""
-        except Exception as e:
-            logger.warning(f"Failed to get attribute {attribute} from {selector}: {str(e)}")
-
-        return ""
-
     async def _extract_search_results(self, max_results: int) -> List[Dict[str, Any]]:
         """Extract product information from search results."""
         products = []
@@ -751,30 +481,6 @@ class AmazonConnection:
             logger.warning(f"Error extracting product images: {str(e)}")
 
         return images
-
-    async def get_product_by_url(self, url: str) -> Dict[str, Any]:
-        """
-        Get product information directly from a product URL.
-
-        Args:
-            url: The full Amazon product URL
-
-        Returns:
-            Dictionary with product information
-        """
-        logger.info(f"Getting product from URL: {url}")
-
-        # Navigate to the product page
-        await self._navigate_with_retry(url)
-
-        # Check if we're on a CAPTCHA page
-        captcha_element = await self.page.query_selector("form[action='/errors/validateCaptcha']")
-        if captcha_element:
-            logger.warning("CAPTCHA detected! Amazon is blocking automated access.")
-            return {}
-
-        # Extract product details
-        return await self.extract_product_details()
 
     def build_search_url(self, query, filters=None):
         """Build Amazon search URL with filters."""
@@ -1102,29 +808,3 @@ class AmazonConnection:
 
         logger.info(f"Extracted review statistics for product")
         return stats
-
-    async def rotate_proxy(self):
-        """Rotate to a new proxy and recreate the browser context."""
-        if not self.proxies:
-            logger.warning("No proxies available for rotation")
-            return False
-
-        logger.info("Rotating proxy...")
-
-        # Close existing context and page
-        if self.page:
-            await self.page.close()
-        if self.context:
-            await self.context.close()
-
-        # Create new context with next proxy
-        await self.setup_stealth_browser()
-
-        # Create new page
-        self.page = await self.context.new_page()
-
-        # Add human-like behavior
-        await self._add_human_behavior()
-
-        logger.info(f"Proxy rotated, new user agent: {self.user_agent}")
-        return True

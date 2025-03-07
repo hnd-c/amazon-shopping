@@ -10,6 +10,7 @@ import random
 import time
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from functools import wraps
+from playwright.async_api import async_playwright, Browser as PlaywrightBrowser, BrowserContext, Page, Playwright
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -83,7 +84,8 @@ class BrowserPool:
 
     async def get_browser(self, headless=True, slow_mo=50, proxy=None, proxies=None):
         """Get an available browser from the pool or create a new one."""
-        from .main import AmazonConnection  # Import here to avoid circular imports
+        # Import here to avoid circular imports
+        from .main import AmazonConnection
 
         async with self.lock:
             # Clean up expired browsers
@@ -235,3 +237,264 @@ def amazon_tool(func):
 # Create global instances
 rate_limiter = RateLimiter()
 browser_pool = BrowserPool()
+
+class Browser:
+    """Base browser class that handles common browser operations."""
+
+    def __init__(self, headless: bool = True, slow_mo: int = 50, proxy: Optional[str] = None, proxies: Optional[List[str]] = None):
+        """Initialize the browser.
+
+        Args:
+            headless: Whether to run the browser in headless mode
+            slow_mo: Slow down operations by this amount of milliseconds
+            proxy: Single proxy to use (format: "http://user:pass@host:port")
+            proxies: List of proxies to rotate through
+        """
+        self.headless = headless
+        self.slow_mo = slow_mo
+        self.proxy = proxy
+        self.proxies = proxies
+        self.current_proxy_index = 0
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
+        self.user_agent = None
+
+    async def __aenter__(self):
+        """Set up the connection when entering a context."""
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up resources when exiting a context."""
+        await self.close()
+
+    async def start(self):
+        """Start the browser and create a new context."""
+        logger.info("Starting browser")
+        self.playwright = await async_playwright().start()
+
+        # Launch with more stealth options
+        self.browser = await self.playwright.chromium.launch(
+            headless=self.headless,
+            slow_mo=self.slow_mo,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-site-isolation-trials',
+                '--disable-web-security',
+                '--disable-features=BlockInsecurePrivateNetworkRequests'
+            ]
+        )
+
+        # Create a context with a random user agent and more realistic settings
+        await self.setup_stealth_browser()
+
+        # Create a page
+        self.page = await self.context.new_page()
+
+        # Add human-like behavior AFTER page is created
+        await self._add_human_behavior()
+
+        logger.info(f"Browser started with user agent: {self.user_agent}")
+
+    async def setup_stealth_browser(self):
+        """Set up a browser context with stealth settings to avoid detection."""
+        # Select a random user agent
+        self.user_agent = random.choice(USER_AGENTS)
+
+        # Set up proxy if provided
+        proxy_settings = None
+        if self.proxies and len(self.proxies) > 0:
+            # Rotate through available proxies
+            self.proxy = self.proxies[self.current_proxy_index % len(self.proxies)]
+            self.current_proxy_index += 1
+
+        if self.proxy:
+            logger.info(f"Using proxy: {self.proxy}")
+            proxy_settings = {"server": self.proxy}
+
+        # Create a context with the selected user agent and realistic viewport
+        self.context = await self.browser.new_context(
+            user_agent=self.user_agent,
+            viewport={"width": 1920, "height": 1080},
+            proxy=proxy_settings,
+            java_script_enabled=True,
+            locale="en-US",
+            timezone_id="America/New_York",
+            has_touch=False,
+            is_mobile=False,
+            device_scale_factor=1,
+            color_scheme="light"
+        )
+
+        # Add additional scripts to avoid detection
+        await self.context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => false,
+            });
+
+            // Overwrite the plugins
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+            });
+
+            // Overwrite the languages property
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en'],
+            });
+        """)
+
+    async def _add_human_behavior(self):
+        """Add human-like behavior to avoid detection."""
+        # Add random mouse movements
+        await self.page.evaluate("""
+            () => {
+                const randomMove = () => {
+                    const x = Math.floor(Math.random() * window.innerWidth);
+                    const y = Math.floor(Math.random() * window.innerHeight);
+                    const event = new MouseEvent('mousemove', {
+                        'view': window,
+                        'bubbles': true,
+                        'cancelable': true,
+                        'clientX': x,
+                        'clientY': y
+                    });
+                    document.dispatchEvent(event);
+                };
+
+                // Random mouse movements
+                setInterval(randomMove, Math.floor(Math.random() * 5000) + 2000);
+            }
+        """)
+
+    async def close(self):
+        """Close the browser and clean up resources."""
+        if self.page:
+            await self.page.close()
+            self.page = None
+
+        if self.context:
+            await self.context.close()
+            self.context = None
+
+        if self.browser:
+            await self.browser.close()
+            self.browser = None
+
+        if self.playwright:
+            await self.playwright.stop()
+            self.playwright = None
+
+        logger.info("Browser closed")
+
+    async def rotate_proxy(self):
+        """Rotate to a new proxy and recreate the browser context."""
+        if not self.proxies:
+            logger.warning("No proxies available for rotation")
+            return False
+
+        logger.info("Rotating proxy...")
+
+        # Close existing context and page
+        if self.page:
+            await self.page.close()
+        if self.context:
+            await self.context.close()
+
+        # Create new context with next proxy
+        await self.setup_stealth_browser()
+
+        # Create new page
+        self.page = await self.context.new_page()
+
+        # Add human-like behavior
+        await self._add_human_behavior()
+
+        logger.info(f"Proxy rotated, new user agent: {self.user_agent}")
+        return True
+
+    async def _navigate_with_retry(self, url, max_retries=3, retry_delay=2):
+        """Navigate to a URL with retry logic."""
+        for attempt in range(max_retries):
+            try:
+                response = await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+                # Check if we got a valid response
+                if response and response.ok:
+                    # Add a small delay to ensure page is interactive
+                    await asyncio.sleep(random.uniform(1.0, 2.0))
+                    return response
+
+                # Check for CAPTCHA or blocking
+                for captcha_selector in ["input[name='amzn-captcha-submit']", "img[src*='captcha']"]:
+                    if await self.page.query_selector(captcha_selector):
+                        logger.warning(f"CAPTCHA detected on attempt {attempt+1}")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay * (attempt + 1))
+                            continue
+                        raise Exception("CAPTCHA detected")
+
+                # If we got here, we have a non-OK response
+                logger.warning(f"Navigation failed with status: {response.status if response else 'No response'}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+
+                raise Exception(f"Failed to navigate to {url} after {max_retries} attempts")
+
+            except Exception as e:
+                logger.warning(f"Navigation error on attempt {attempt+1}: {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_delay)
+                    continue
+                raise
+
+    async def _wait_for_element(self, selector, timeout=10000):
+        """Wait for an element to be present on the page."""
+        try:
+            return await self.page.wait_for_selector(selector, timeout=timeout)
+        except Exception as e:
+            logger.warning(f"Timeout waiting for selector: {selector}")
+            return None
+
+    async def _get_text(self, selector, default=""):
+        """Get text content from an element."""
+        try:
+            element = await self.page.query_selector(selector)
+            if element:
+                return (await element.text_content()).strip()
+            return default
+        except Exception as e:
+            logger.debug(f"Error getting text for {selector}: {str(e)}")
+            return default
+
+    async def _get_attribute(self, selector, attribute, default=""):
+        """Get attribute value from an element."""
+        try:
+            element = await self.page.query_selector(selector)
+            if element:
+                attr_value = await element.get_attribute(attribute)
+                return attr_value.strip() if attr_value else default
+            return default
+        except Exception as e:
+            logger.debug(f"Error getting attribute {attribute} for {selector}: {str(e)}")
+            return default
+
+    async def _route_handler(self, route, request):
+        """Handle requests to modify headers and block unnecessary resources."""
+        # Block unnecessary resources to improve performance
+        if request.resource_type in ["image", "media", "font"]:
+            if random.random() < 0.7:  # Allow some resources to load for better stealth
+                await route.abort()
+                return
+
+        # Add additional headers for stealth
+        headers = {
+            **request.headers,
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        }
+
+        await route.continue_(headers=headers)
