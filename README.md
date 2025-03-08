@@ -5,7 +5,7 @@ A LangGraph-based agent for querying Amazon product information using natural la
 
 ## Quick Start
 
-1. Set up environment variables:
+1. Set up environment variables. It is setup to work with Anthropic, make changes in config.template.json and configuration.py to make it work with other LLMs:
    ```bash
    # Copy example env file
    cp .env.example .env
