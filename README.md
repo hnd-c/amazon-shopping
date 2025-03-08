@@ -37,7 +37,7 @@ make setup
 4. run the agent in langsmith studio
 
 ```bash
-langgraph dev
+make run-langgraph
 ```
 
 5. Should see the agent running in langsmith studio or access the agent:
