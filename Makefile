@@ -3,8 +3,6 @@
 # Default target executed when no arguments are given to make.
 all: help
 
-# Define a variable for the test file path.
-TEST_FILE ?= tests/unit_tests/
 
 # Installation targets
 install:
@@ -29,27 +27,6 @@ test-tool:
 
 test-tool-all:
 	python -m tests.test_tool --all
-
-test-main:
-	python -m tests.test_main --test bluetooth_speaker
-
-test-main-all:
-	python -m tests.test_main --all
-
-# Testing targets
-test:
-	python -m pytest $(TEST_FILE)
-
-test_watch:
-	python -m ptw --snapshot-update --now . -- -vv tests/unit_tests
-
-test_profile:
-	python -m pytest -vv tests/unit_tests/ --profile-svg
-
-extended_tests:
-	python -m pytest --only-extended $(TEST_FILE)
-
-
 ######################
 # LINTING AND FORMATTING
 ######################

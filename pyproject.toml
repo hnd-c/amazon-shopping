@@ -1,7 +1,7 @@
 [project]
 name = "react-agent"
 version = "0.0.1"
-description = "Starter template for making a custom Reasoning and Action agent (using tool calling) in LangGraph."
+description = "Amazon Shopping Assistant"
 authors = [
     { name = "Hem Chaudhary", email = "hemnarayan.chaudhary3@gmail.com" },
 ]

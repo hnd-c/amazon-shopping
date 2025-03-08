@@ -49,7 +49,7 @@ langgraph dev
 {
   "messages": [
     {
-      "content": "Find me a black backpack under 50$",
+      "content": "Find me a toothpaste under 20$",
       "type": "human"
     }
   ]
