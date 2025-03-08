@@ -49,7 +49,7 @@ async def search_amazon_products(
     # Sorting and display
     sort_by: Optional[str] = "review-rank",
     max_results: int = 5,
-    browser: Optional[Any] = None,  # Added by decorator
+    browser: Optional[Any] = None,
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[List[ProductInfo], ErrorResponse]:
     """Search for products on Amazon with comprehensive filtering options."""
@@ -184,10 +184,9 @@ async def compare_products(
         if len(urls) > 5:
             urls = urls[:5]  # Limit to 5 products for comparison
 
-        # Fetch product details concurrently
+        # Fetch product details concurrently using the consolidated method
         async def fetch_product(url):
-            # Remove redundant rate limiter wait - the decorator already handles this
-            return await browser.get_product_details(url)
+            return await browser.extract_product_details(url)
 
         # Use gather to run requests in parallel
         product_details = await asyncio.gather(
@@ -288,19 +287,15 @@ async def find_bestsellers(
 async def get_product_details(
     product_url: str,
     *,
-    browser: Optional[Any] = None,  # Add browser parameter
+    browser: Optional[Any] = None,
     config: Annotated[RunnableConfig, InjectedToolArg]
 ) -> Union[Dict[str, Any], ErrorResponse]:
     """Get detailed information about a specific Amazon product."""
     try:
         logger.info(f"Getting details for product: {product_url}")
 
-        logger.info(f"Fetching product details")
-        details = await browser.get_product_details(product_url)
-
-        # Wait for rate limiter before getting reviews
-        await rate_limiter.wait()
-        reviews = await browser.get_product_reviews(product_url)
+        # Use the consolidated method
+        details = await browser.extract_product_details(product_url)
 
         # Format the response
         result = {
@@ -327,10 +322,13 @@ async def get_product_details(
         if "specifications" in details and details["specifications"]:
             result["specifications"] = details["specifications"]
 
+        # Get reviews using the consolidated method
+        reviews_data = await browser.extract_product_reviews(product_url, max_reviews=3)
+
         # Add reviews if available
-        if reviews:
+        if reviews_data and "reviews" in reviews_data:
             result["reviews"] = []
-            for review in reviews[:3]:  # Limit to top 3 reviews
+            for review in reviews_data["reviews"][:3]:  # Limit to top 3 reviews
                 result["reviews"].append({
                     "rating": review.get("rating", "N/A"),
                     "title": review.get("title", ""),
@@ -360,40 +358,11 @@ async def get_product_reviews(
     try:
         logger.info(f"Getting reviews for product: {product_url}")
 
-        logger.info(f"Fetching product details")
-        details = await browser.get_product_details(product_url)
+        # Use the consolidated method with filters
+        filters = {"review_type": review_type} if review_type else None
+        reviews_data = await browser.extract_product_reviews(product_url, filters=filters, max_reviews=max_reviews)
 
-        # Remove redundant rate limiter wait - the decorator already handles this
-        all_reviews = await browser.get_product_reviews(product_url)
-
-        # Filter reviews if review_type is specified
-        filtered_reviews = all_reviews
-        if review_type and all_reviews:
-            if review_type.lower() == "positive":
-                filtered_reviews = [r for r in all_reviews if r.get("rating", "").startswith(("4", "5"))]
-            elif review_type.lower() == "critical":
-                filtered_reviews = [r for r in all_reviews if r.get("rating", "").startswith(("1", "2", "3"))]
-
-        # Format the response
-        result = {
-            "product_title": details.get("title", "Unknown"),
-            "overall_rating": details.get("rating", "N/A"),
-            "total_reviews": len(all_reviews),
-            "reviews": []
-        }
-
-        # Add reviews
-        for review in filtered_reviews[:max_reviews]:
-            result["reviews"].append({
-                "rating": review.get("rating", "N/A"),
-                "title": review.get("title", ""),
-                "date": review.get("date", ""),
-                "verified_purchase": review.get("verified_purchase", False),
-                "content": review.get("content", ""),
-                "helpful_votes": review.get("helpful_votes", "0")
-            })
-
-        return result
+        return reviews_data
 
     finally:
         # Only close the browser if we're not in a chain of Amazon tool calls
