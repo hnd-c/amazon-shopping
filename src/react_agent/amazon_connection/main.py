@@ -414,7 +414,7 @@ class AmazonConnection(Browser):
                     product["title"] = await title_element.text_content()
                 else:
                     # Try alternative title selector
-                    alt_title = await card.query_selector("h2 a span")
+                    alt_title = await card.query_selector(SELECTORS["alt_title"])
                     if alt_title:
                         product["title"] = await alt_title.text_content()
 
@@ -429,7 +429,7 @@ class AmazonConnection(Browser):
                     product["url"] = f"https://www.amazon.com/dp/{asin}"
                 else:
                     # Fallback to link extraction
-                    link_element = await card.query_selector("h2 a.a-link-normal")
+                    link_element = await card.query_selector(SELECTORS["product_link"])
                     if link_element:
                         href = await link_element.get_attribute("href")
                         if href:
@@ -444,11 +444,9 @@ class AmazonConnection(Browser):
                     continue
 
                 # Price extraction with multiple fallbacks
-                for price_selector in [SELECTORS["product_price"], ".a-price .a-offscreen", ".a-color-price"]:
-                    price_element = await card.query_selector(price_selector)
-                    if price_element:
-                        product["price"] = await price_element.text_content()
-                        break
+                price_element = await card.query_selector(SELECTORS["product_price"])
+                if price_element:
+                    product["price"] = await price_element.text_content()
 
                 # Prime eligibility
                 prime_element = await card.query_selector(SELECTORS["prime_badge"])
@@ -464,7 +462,7 @@ class AmazonConnection(Browser):
                         product["rating"] = rating_text.split(" stars")[0].strip()
 
                 # Review count with fallbacks
-                for review_selector in ["span.a-size-base.s-underline-text", ".a-link-normal .a-size-base"]:
+                for review_selector in SELECTORS["review_count_selectors"]:
                     review_element = await card.query_selector(review_selector)
                     if review_element:
                         review_text = await review_element.text_content()
@@ -483,17 +481,28 @@ class AmazonConnection(Browser):
 
     async def extract_product_details(self, product_url: str) -> Dict[str, Any]:
         """
-        Consolidated method to extract detailed product information.
+        Extract detailed information about a product from its page.
 
         Args:
             product_url: URL of the product page
 
         Returns:
-            Dictionary with comprehensive product details
+            Dictionary with detailed product information
         """
         logger.info(f"Extracting details for product: {product_url}")
 
-        product_details = {}
+        product_details = {
+            "title": "",
+            "price": "",
+            "rating": None,
+            "review_count": None,
+            "availability": None,
+            "description": None,
+            "features": [],
+            "specifications": {},
+            "images": [],
+            "url": product_url
+        }
 
         # Use stealth navigation
         success = await self.stealth_visit(product_url)
@@ -503,41 +512,38 @@ class AmazonConnection(Browser):
             return product_details
 
         # Wait for product page to load
-        await self._wait_for_element("#productTitle")
+        await self._wait_for_element(SELECTORS["product_title_detail"])
 
         # Check for CAPTCHA
         if await self.check_for_captcha():
             logger.warning("CAPTCHA detected when trying to get product details")
             return product_details
 
-        # Extract basic product information
         try:
-            # Title
-            title_element = await self.page.query_selector("#productTitle")
+            # Extract ASIN from URL if available
+            if "/dp/" in product_url:
+                asin = product_url.split("/dp/")[1].split("/")[0].split("?")[0]
+                product_details["asin"] = asin
+
+            # Get product title
+            title_element = await self.page.query_selector(SELECTORS["product_title_detail"])
             if title_element:
                 product_details["title"] = (await title_element.text_content()).strip()
 
-            # Price with multiple fallbacks
-            for selector in ["#priceblock_ourprice", "#priceblock_dealprice", ".a-price .a-offscreen",
-                             ".a-color-price", "#price_inside_buybox"]:
-                price_element = await self.page.query_selector(selector)
-                if price_element:
-                    product_details["price"] = (await price_element.text_content()).strip()
-                    break
+            # Get product price
+            price_element = await self.page.query_selector(SELECTORS["product_price_detail"])
+            if price_element:
+                product_details["price"] = (await price_element.text_content()).strip()
 
-            # Rating with fallbacks
-            rating_element = await self.page.query_selector("span[data-hook='rating-out-of-text']")
+            # Get product rating
+            rating_element = await self.page.query_selector(SELECTORS["product_rating_detail"])
             if rating_element:
-                product_details["rating"] = await rating_element.text_content()
-            else:
-                rating_element = await self.page.query_selector("#acrPopover")
-                if rating_element:
-                    rating_text = await rating_element.get_attribute("title")
-                    if rating_text:
-                        product_details["rating"] = rating_text.split(" out of")[0]
+                rating_text = await rating_element.get_attribute("title")
+                if rating_text and "out of 5 stars" in rating_text:
+                    product_details["rating"] = rating_text.split(" out of")[0]
 
-            # Review count
-            review_count_element = await self.page.query_selector("#acrCustomerReviewText")
+            # Get review count
+            review_count_element = await self.page.query_selector(SELECTORS["product_review_count"])
             if review_count_element:
                 review_text = await review_count_element.text_content()
                 if "ratings" in review_text or "reviews" in review_text:
@@ -545,30 +551,30 @@ class AmazonConnection(Browser):
                     product_details["review_count"] = count_text
 
             # Check for Prime eligibility
-            prime_element = await self.page.query_selector("#isPrimeBadge, .a-icon-prime")
+            prime_element = await self.page.query_selector(SELECTORS["prime_badge_detail"])
             product_details["prime_eligible"] = prime_element is not None
 
             # Availability
-            availability_element = await self.page.query_selector("#availability")
+            availability_element = await self.page.query_selector(SELECTORS["product_availability"])
             if availability_element:
                 product_details["availability"] = (await availability_element.text_content()).strip()
 
             # Get product description
-            description_element = await self.page.query_selector("#productDescription p")
+            description_element = await self.page.query_selector(SELECTORS["product_description"])
             if description_element:
                 product_details["description"] = (await description_element.text_content()).strip()
             else:
-                product_details["description"] = await self._get_text("#productDescription")
+                product_details["description"] = await self._get_text(SELECTORS["product_description_container"])
 
             # Get product features
             features = []
-            feature_elements = await self.page.query_selector_all("#feature-bullets li:not(.aok-hidden) span.a-list-item")
+            feature_elements = await self.page.query_selector_all(SELECTORS["product_features"])
             if feature_elements:
                 for element in feature_elements:
                     feature_text = await element.text_content()
                     features.append(feature_text.strip())
             else:
-                feature_bullets = await self.page.query_selector_all("#feature-bullets li")
+                feature_bullets = await self.page.query_selector_all(SELECTORS["product_features_alt"])
                 for bullet in feature_bullets:
                     feature_text = await bullet.text_content()
                     features.append(feature_text.strip())
@@ -580,7 +586,7 @@ class AmazonConnection(Browser):
             # Try to get specifications from product details section
             try:
                 # Check for technical details table
-                tech_rows = await self.page.query_selector_all("#productDetails_techSpec_section_1 tr")
+                tech_rows = await self.page.query_selector_all(SELECTORS["product_specs_tech"])
                 for row in tech_rows:
                     try:
                         key_element = await row.query_selector("th")
@@ -594,7 +600,7 @@ class AmazonConnection(Browser):
                         continue
 
                 # Check for additional details table
-                detail_rows = await self.page.query_selector_all("#productDetails_detailBullets_sections1 tr")
+                detail_rows = await self.page.query_selector_all(SELECTORS["product_specs_detail"])
                 for row in detail_rows:
                     try:
                         key_element = await row.query_selector("th")
@@ -612,7 +618,7 @@ class AmazonConnection(Browser):
 
             # Get product images
             images = []
-            image_elements = await self.page.query_selector_all("#altImages img")
+            image_elements = await self.page.query_selector_all(SELECTORS["product_images"])
             for img in image_elements:
                 src = await img.get_attribute("src")
                 if src and "sprite" not in src:
@@ -622,7 +628,7 @@ class AmazonConnection(Browser):
 
             # If no images found, try to get the main image
             if not images:
-                main_img = await self.page.query_selector("#landingImage")
+                main_img = await self.page.query_selector(SELECTORS["product_main_image"])
                 if main_img:
                     src = await main_img.get_attribute("src")
                     if src:
@@ -632,7 +638,7 @@ class AmazonConnection(Browser):
 
             # Extract Prime delivery information
             try:
-                delivery_element = await self.page.query_selector("div[data-hook='delivery-block']")
+                delivery_element = await self.page.query_selector(SELECTORS["delivery_info"])
                 if delivery_element:
                     delivery_text = await delivery_element.text_content()
                     product_details["delivery_info"] = delivery_text
@@ -677,7 +683,7 @@ class AmazonConnection(Browser):
             return result
 
         # Wait for product page to load
-        await self._wait_for_element("#productTitle")
+        await self._wait_for_element(SELECTORS["product_title_detail"])
 
         # Check for CAPTCHA
         if await self.check_for_captcha():
@@ -685,16 +691,16 @@ class AmazonConnection(Browser):
             return result
 
         # Get product title
-        title_element = await self.page.query_selector("#productTitle")
+        title_element = await self.page.query_selector(SELECTORS["product_title_detail"])
         if title_element:
             result["product_title"] = (await title_element.text_content()).strip()
 
         # Get overall rating
-        rating_element = await self.page.query_selector("span[data-hook='rating-out-of-text']")
+        rating_element = await self.page.query_selector(SELECTORS["rating_out_of_text"])
         if rating_element:
             result["overall_rating"] = await rating_element.text_content()
         else:
-            rating_element = await self.page.query_selector("#acrPopover")
+            rating_element = await self.page.query_selector(SELECTORS["product_rating_detail"])
             if rating_element:
                 rating_text = await rating_element.get_attribute("title")
                 if rating_text:
@@ -708,21 +714,17 @@ class AmazonConnection(Browser):
         reviews = []
 
         # First try to get reviews from the product page
-        review_elements = await self.page.query_selector_all("#customerReviews .review")
-
-        # If no reviews found, try alternative selectors
-        if not review_elements:
-            review_elements = await self.page.query_selector_all("[data-hook='review']")
+        review_elements = await self.page.query_selector_all(SELECTORS["review_container"])
 
         # If still no reviews, try clicking "See all reviews" button if it exists
         if not review_elements:
-            see_all_button = await self.page.query_selector("a[data-hook='see-all-reviews-link-foot']")
+            see_all_button = await self.page.query_selector(SELECTORS["see_all_reviews"])
             if see_all_button:
                 try:
                     # Click with a try/except as this might trigger anti-bot measures
                     await see_all_button.click()
                     await asyncio.sleep(3)
-                    review_elements = await self.page.query_selector_all("[data-hook='review']")
+                    review_elements = await self.page.query_selector_all(SELECTORS["review_container"])
                 except Exception as e:
                     logger.warning(f"Error clicking 'See all reviews': {e}")
 
@@ -735,7 +737,7 @@ class AmazonConnection(Browser):
 
             # Extract review data with multiple selector fallbacks
             # Rating
-            rating_element = await review_element.query_selector("i[data-hook='review-star-rating'], .a-icon-star")
+            rating_element = await review_element.query_selector(SELECTORS["review_rating"])
             if rating_element:
                 rating_text = await rating_element.text_content() or await rating_element.get_attribute("title") or ""
                 if "out of 5 stars" in rating_text:
@@ -744,26 +746,26 @@ class AmazonConnection(Browser):
                     review["rating"] = rating_text.split(" stars")[0].strip()
 
             # Title
-            title_element = await review_element.query_selector("a[data-hook='review-title'], span[data-hook='review-title']")
+            title_element = await review_element.query_selector(SELECTORS["review_title"])
             if title_element:
                 review["title"] = await title_element.text_content()
 
             # Date
-            date_element = await review_element.query_selector("span[data-hook='review-date']")
+            date_element = await review_element.query_selector(SELECTORS["review_date"])
             if date_element:
                 review["date"] = await date_element.text_content()
 
             # Verified purchase
-            verified_element = await review_element.query_selector("span[data-hook='avp-badge']")
+            verified_element = await review_element.query_selector(SELECTORS["review_verified"])
             review["verified_purchase"] = verified_element is not None
 
             # Content
-            content_element = await review_element.query_selector("span[data-hook='review-body'] span:not(script)")
+            content_element = await review_element.query_selector(SELECTORS["review_content"])
             if content_element:
                 review["content"] = await content_element.text_content()
 
             # Helpful votes
-            helpful_element = await review_element.query_selector("span[data-hook='helpful-vote-statement']")
+            helpful_element = await review_element.query_selector(SELECTORS["review_helpful"])
             if helpful_element:
                 helpful_text = await helpful_element.text_content()
                 if "found this helpful" in helpful_text:
@@ -789,7 +791,7 @@ class AmazonConnection(Browser):
             # Rating breakdown
             breakdown = {}
             for stars in range(5, 0, -1):
-                star_element = await self.page.query_selector(f"a[data-hook='cr-filter-info-link'][title='{stars} star']")
+                star_element = await self.page.query_selector(f"{SELECTORS['star_rating_link']}[title='{stars} star']")
                 if star_element:
                     percentage_element = await star_element.query_selector("span.a-size-base")
                     if percentage_element:
@@ -809,7 +811,13 @@ class AmazonConnection(Browser):
 
     async def check_for_captcha(self):
         """Check if we've hit a CAPTCHA and handle it."""
-        # Currently only detects CAPTCHA but doesn't solve it
+        # Use the CAPTCHA selectors from utils.py
+        for selector in SELECTORS["captcha_selectors"]:
+            element = await self.page.query_selector(selector)
+            if element:
+                logger.warning("CAPTCHA detected")
+                return True
+        return False
 
     async def stealth_visit(self, url, max_retries=3):
         """
@@ -819,17 +827,26 @@ class AmazonConnection(Browser):
 
         for attempt in range(max_retries):
             try:
-                # Add random delay before navigation
-                await asyncio.sleep(random.uniform(2, 5))
+                # Add random delay before navigation with much longer intervals
+                # Exponentially increase delay between attempts
+                base_delay = 5 * (2 ** attempt)  # 5s, 10s, 20s base delay
+                jitter = random.uniform(0.5, 1.5)  # Add randomness
+                delay = base_delay * jitter
 
-                # Simulate human-like behavior before navigation
-                await self._add_pre_navigation_behavior()
+                logger.info(f"Waiting {delay:.2f}s before navigation attempt {attempt+1}")
+                await asyncio.sleep(delay)
+
+                # Simulate human-like behavior before navigation with more variability
+                await self._add_pre_navigation_behavior(intensity=attempt+1)
+
+                # Randomize browser fingerprint before each navigation attempt
+                await self._randomize_browser_fingerprint()
 
                 # Navigate with a more realistic timeout
                 response = await self.page.goto(
                     url,
                     wait_until="domcontentloaded",
-                    timeout=30000
+                    timeout=45000  # Increased timeout
                 )
 
                 # Check for 503 or CAPTCHA
@@ -846,11 +863,12 @@ class AmazonConnection(Browser):
                         logger.info("Rotating proxy due to 503 error")
                         await self.rotate_proxy()
 
-                    # Add increasing delay between retries
+                    # Add increasing delay between retries with much longer waits
                     if attempt < max_retries - 1:
-                        delay = 5 * (2 ** attempt) * (0.5 + random.random())
-                        logger.info(f"Waiting {delay:.2f}s before retry")
-                        await asyncio.sleep(delay)
+                        # Much longer exponential backoff with jitter
+                        backoff_delay = 30 * (3 ** attempt) * (0.8 + random.random() * 0.4)
+                        logger.info(f"Waiting {backoff_delay:.2f}s before retry")
+                        await asyncio.sleep(backoff_delay)
                         continue
                     return False
 
@@ -864,71 +882,163 @@ class AmazonConnection(Browser):
                         await self.rotate_proxy()
 
                     if attempt < max_retries - 1:
-                        delay = 5 * (2 ** attempt) * (0.5 + random.random())
-                        await asyncio.sleep(delay)
+                        # Much longer exponential backoff with jitter
+                        backoff_delay = 45 * (3 ** attempt) * (0.8 + random.random() * 0.4)
+                        logger.info(f"Waiting {backoff_delay:.2f}s before retry after CAPTCHA")
+                        await asyncio.sleep(backoff_delay)
                         continue
                     return False
 
-                # Add post-navigation human-like behavior
-                await self._add_post_navigation_behavior()
+                # Add post-navigation human-like behavior with more variability
+                await self._add_post_navigation_behavior(intensity=attempt+1)
+
+                # Add a random delay after successful navigation to mimic reading
+                await asyncio.sleep(random.uniform(3, 8))
 
                 return True
 
             except Exception as e:
                 logger.warning(f"Error during stealth visit attempt {attempt+1}: {str(e)}")
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(5 * (attempt + 1))
+                    # Longer delay after errors
+                    error_delay = 15 * (attempt + 1) * (0.8 + random.random() * 0.4)
+                    logger.info(f"Waiting {error_delay:.2f}s after error")
+                    await asyncio.sleep(error_delay)
                     continue
                 return False
 
         return False
 
-    async def _add_pre_navigation_behavior(self):
+    async def _randomize_browser_fingerprint(self):
+        """Randomize browser fingerprint to avoid detection."""
+        try:
+            # Randomize viewport size within realistic dimensions
+            width = random.randint(1024, 1920)
+            height = random.randint(768, 1080)
+            await self.page.set_viewport_size({"width": width, "height": height})
+
+            # Randomize user agent occasionally
+            if random.random() < 0.3:  # 30% chance to change user agent
+                new_user_agent = random.choice(USER_AGENTS)
+                await self.page.evaluate(f'() => Object.defineProperty(navigator, "userAgent", {{ get: () => "{new_user_agent}" }})')
+                logger.debug(f"Changed user agent to: {new_user_agent}")
+
+            # Add random plugins count
+            plugins_count = random.randint(3, 10)
+            await self.page.evaluate(f'() => Object.defineProperty(navigator, "plugins", {{ get: () => new Array({plugins_count}) }})')
+
+            # Randomize screen dimensions
+            screen_width = width + random.randint(0, 200)
+            screen_height = height + random.randint(100, 300)
+            await self.page.evaluate(f'''() => {{
+                Object.defineProperty(screen, "width", {{ get: () => {screen_width} }});
+                Object.defineProperty(screen, "height", {{ get: () => {screen_height} }});
+                Object.defineProperty(screen, "availWidth", {{ get: () => {screen_width - random.randint(0, 20)} }});
+                Object.defineProperty(screen, "availHeight", {{ get: () => {screen_height - random.randint(30, 70)} }});
+            }}''')
+
+            # Randomize hardware concurrency (CPU cores)
+            cpu_cores = random.choice([2, 4, 6, 8])
+            await self.page.evaluate(f'() => Object.defineProperty(navigator, "hardwareConcurrency", {{ get: () => {cpu_cores} }})')
+
+            # Randomize device memory
+            device_memory = random.choice([2, 4, 8, 16])
+            await self.page.evaluate(f'() => Object.defineProperty(navigator, "deviceMemory", {{ get: () => {device_memory} }})')
+
+        except Exception as e:
+            logger.debug(f"Error randomizing browser fingerprint: {e}")
+
+    async def _add_pre_navigation_behavior(self, intensity=1):
         """Add human-like behavior before navigation to avoid detection."""
         try:
-            # Random mouse movements
-            for _ in range(random.randint(2, 5)):
+            # Random mouse movements with variable intensity
+            for _ in range(random.randint(2 * intensity, 5 * intensity)):
                 x = random.randint(100, 800)
                 y = random.randint(100, 600)
-                await self.page.mouse.move(x, y)
-                await asyncio.sleep(random.uniform(0.1, 0.3))
+                # Add realistic mouse movement with variable speed
+                await self.page.mouse.move(x, y, steps=random.randint(3, 10))
+                await asyncio.sleep(random.uniform(0.1, 0.5))
 
-            # Sometimes click on a random spot
-            if random.random() < 0.3:
+            # Sometimes click on a random spot with higher probability based on intensity
+            if random.random() < 0.3 * intensity:
                 x = random.randint(100, 800)
                 y = random.randint(100, 600)
                 await self.page.mouse.click(x, y)
+                await asyncio.sleep(random.uniform(0.5, 1.5))
 
             # Sometimes resize window
-            if random.random() < 0.2:
+            if random.random() < 0.2 * intensity:
                 width = random.randint(1000, 1200)
                 height = random.randint(800, 900)
                 await self.page.set_viewport_size({"width": width, "height": height})
+                await asyncio.sleep(random.uniform(0.3, 0.7))
+
+            # Sometimes scroll a bit before navigation
+            if random.random() < 0.4 * intensity:
+                await self.page.evaluate(f"window.scrollBy(0, {random.randint(100, 300)})")
+                await asyncio.sleep(random.uniform(0.5, 1.0))
+
         except Exception as e:
             logger.debug(f"Error in pre-navigation behavior: {e}")
 
-    async def _add_post_navigation_behavior(self):
+    async def _add_post_navigation_behavior(self, intensity=1):
         """Add human-like behavior after navigation to avoid detection."""
         try:
-            # Wait a random time after page load
-            await asyncio.sleep(random.uniform(1, 3))
+            # Wait a random time after page load with variable intensity
+            await asyncio.sleep(random.uniform(2.0, 4.0) * intensity)
 
-            # Random scrolling
-            for _ in range(random.randint(2, 5)):
-                scroll_y = random.randint(100, 500)
-                await self.page.evaluate(f"window.scrollBy(0, {scroll_y})")
-                await asyncio.sleep(random.uniform(0.5, 1.5))
+            # Random scrolling with variable patterns
+            scroll_count = random.randint(3 * intensity, 7 * intensity)
+            for i in range(scroll_count):
+                # Variable scroll distance
+                scroll_y = random.randint(100, 300) * (1 + (i % 3) * 0.5)
+
+                # Variable scroll speed by adjusting the steps
+                steps = random.randint(5, 15)
+                scroll_per_step = scroll_y / steps
+
+                for step in range(steps):
+                    await self.page.evaluate(f"window.scrollBy(0, {scroll_per_step})")
+                    await asyncio.sleep(random.uniform(0.05, 0.15))
+
+                # Pause between scrolls with variable duration
+                await asyncio.sleep(random.uniform(0.7, 2.0))
+
+                # Occasionally scroll horizontally too
+                if random.random() < 0.2:
+                    await self.page.evaluate(f"window.scrollBy({random.randint(-100, 100)}, 0)")
+                    await asyncio.sleep(random.uniform(0.3, 0.7))
 
             # Sometimes scroll back up
-            if random.random() < 0.5:
-                await self.page.evaluate("window.scrollTo(0, 0)")
-                await asyncio.sleep(random.uniform(0.5, 1))
+            if random.random() < 0.5 * intensity:
+                # Scroll back up in steps
+                steps = random.randint(5, 10)
+                current_position = await self.page.evaluate("window.pageYOffset")
+                scroll_per_step = current_position / steps
 
-            # Random mouse movements
-            for _ in range(random.randint(3, 7)):
+                for step in range(steps):
+                    await self.page.evaluate(f"window.scrollBy(0, {-scroll_per_step})")
+                    await asyncio.sleep(random.uniform(0.05, 0.15))
+
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            # Random mouse movements with more complexity
+            for _ in range(random.randint(4 * intensity, 8 * intensity)):
                 x = random.randint(100, 800)
                 y = random.randint(100, 600)
-                await self.page.mouse.move(x, y)
-                await asyncio.sleep(random.uniform(0.2, 0.5))
+                # Add realistic mouse movement with variable speed
+                await self.page.mouse.move(x, y, steps=random.randint(3, 10))
+                await asyncio.sleep(random.uniform(0.2, 0.7))
+
+                # Occasionally hover over elements
+                if random.random() < 0.3:
+                    elements = await self.page.query_selector_all("a, button, img")
+                    if elements and len(elements) > 0:
+                        random_element = elements[random.randint(0, len(elements) - 1)]
+                        try:
+                            await random_element.hover()
+                            await asyncio.sleep(random.uniform(0.3, 1.2))
+                        except:
+                            pass
         except Exception as e:
             logger.debug(f"Error in post-navigation behavior: {e}")

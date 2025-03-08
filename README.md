@@ -1,11 +1,7 @@
-# Chemical Database Agent
+# Amazon Shopping Assistant
 
-A LangGraph-based agent for querying chemical product information using natural language.
+A LangGraph-based agent for querying Amazon product information using natural language.
 
-## Prerequisites
-- Docker and Docker Compose
-- Python 3.8+
-- Git
 
 ## Quick Start
 
@@ -23,53 +19,39 @@ A LangGraph-based agent for querying chemical product information using natural 
    ANTHROPIC_API_KEY="your_anthropic_key"
    OPENAI_API_KEY="your_openai_key"
 
-   SUPABASE_URL="your_supabase_url"
-   SUPABASE_KEY="your_supabase_key"
    ```
-
-2. Build the LangGraph image:
-   ```bash
-   langgraph build -t my-image
-   ```
-
-3. Start the services:
-   ```bash
-   docker compose up
-   ```
-
-4. Access the agent:
-   - Open [LangSmith Studio](https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:8123)
-   - Or follow the [LangChain Academy setup guide](https://github.com/langchain-ai/langchain-academy/blob/main/module-6/connecting.ipynb)
 
 ## Development
 
-create venv
+2. create venv
 ```bash
 python -m venv venv
 source venv/bin/activate
 ```
 
-install dependencies
+3. install dependencies
 ```bash
 make setup
 ```
 
-run the agent in langsmith studio
+4. run the agent in langsmith studio
 
 ```bash
 langgraph dev
 ```
 
-input format in json
+5. Should see the agent running in langsmith studio or access the agent:
+   - Open [LangSmith Studio](https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:8123)
+   - Or follow the [LangChain Academy setup guide](https://github.com/langchain-ai/langchain-academy/blob/main/module-6/connecting.ipynb)
+
+6. input format in json
 ```
 {
   "messages": [
     {
-      "content": "What companies sell nail polish?",
+      "content": "Find me a black backpack under 50$",
       "type": "human"
     }
   ]
 }
 ```
-
-"python -m playwright install" add it during docker compose //note to self

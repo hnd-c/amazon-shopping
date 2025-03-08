@@ -114,19 +114,29 @@ SELECTORS = {
     "product_price": ".a-price .a-offscreen, span.a-price, .a-color-price",
     "product_rating": ".a-icon-star-small .a-icon-alt, .a-icon-star .a-icon-alt",
     "prime_badge": "i.a-icon-prime",
+    "alt_title": "h2 a span",
+    "product_link": "h2 a.a-link-normal",
+    "review_count_selectors": ["span.a-size-base.s-underline-text", ".a-link-normal .a-size-base"],
 
     # Product details
     "product_title_detail": "#productTitle",
     "product_price_detail": "#priceblock_ourprice, #priceblock_dealprice, .a-price .a-offscreen",
     "product_availability": "#availability",
-    "product_features": "#feature-bullets li:not(.aok-hidden) span.a-list-item",
     "product_description": "#productDescription p",
+    "product_description_container": "#productDescription",
+    "product_features": "#feature-bullets li:not(.aok-hidden) span.a-list-item",
+    "product_features_alt": "#feature-bullets li",
     "product_rating_detail": "#acrPopover",
     "product_review_count": "#acrCustomerReviewText",
+    "prime_badge_detail": "#isPrimeBadge, .a-icon-prime",
+    "product_specs_tech": "#productDetails_techSpec_section_1 tr",
+    "product_specs_detail": "#productDetails_detailBullets_sections1 tr",
     "product_images": "#altImages img",
+    "product_main_image": "#landingImage",
     "delivery_info": "div[data-hook='delivery-block']",
 
     # Reviews
+    "reviews_list": "#cm_cr-review_list",
     "review_container": "#customerReviews .review, [data-hook='review']",
     "review_rating": "i[data-hook='review-star-rating'], .a-icon-star",
     "review_title": "a[data-hook='review-title'], span[data-hook='review-title']",
@@ -134,6 +144,10 @@ SELECTORS = {
     "review_verified": "span[data-hook='avp-badge']",
     "review_content": "span[data-hook='review-body'] span:not(script)",
     "review_helpful": "span[data-hook='helpful-vote-statement']",
+    "see_all_reviews": "a[data-hook='see-all-reviews-link-foot']",
+    "rating_out_of_text": "span[data-hook='rating-out-of-text']",
+    "review_rating_count": "div[data-hook='cr-filter-info-review-rating-count']",
+    "star_rating_link": "a[data-hook='cr-filter-info-link']",
 
     # CAPTCHA detection
     "captcha_selectors": [
