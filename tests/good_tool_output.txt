@@ -1,0 +1,447 @@
+venv(base) hemnarayandaschaudhary@Hems-MacBook-Pro amazon-support % make test-tool-all
+python -m tests.test_tool --all
+INFO:react_agent.configuration:Loading environment from /Users/hemnarayandaschaudhary/probook/amazon-support/.env
+INFO:react_agent.configuration:No config.json found, using template from /Users/hemnarayandaschaudhary/probook/amazon-support/src/react_agent/config.template.json
+
+
+=== RUNNING ALL TEST CASES ===
+
+
+=== RUNNING TEST CASE: Basic Product Search ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.browser_management:Starting browser
+INFO:src.react_agent.amazon_connection.browser_management:Browser started with user agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon for: bluetooth speaker
+INFO:src.react_agent.amazon_connection.main:Searching for: bluetooth speaker
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=bluetooth+speaker
+INFO:src.react_agent.amazon_connection.main:Waiting 3.51s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 23 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: bluetooth speaker
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=bluetooth+speaker&s=review-rank
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=bluetooth+speaker&s=review-rank
+INFO:src.react_agent.amazon_connection.main:Waiting 5.19s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 19 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 3 products for query: bluetooth speaker
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Basic Product Search:
+Found 3 items
+
+Item 1:
+  title: Portable Bluetooth Speaker with LED Lights, Stereo Sound Punchy Bass, Portable Wireless Up to 10H Pl...
+  price: $59.99$59.99
+  url: https://www.amazon.com/dp/B0DHRN2C9S
+  asin: B0DHRN2C9S
+  prime_eligible: True
+  rating: 5.0
+  review_count: 274
+
+Item 2:
+  title: TOZO PE1 Portable Bluetooth Speakers with Adjustable Carabiner, Mini Bluetooth Wireless Shower Speak...
+  price: $24.99$24.99
+  url: https://www.amazon.com/dp/B0DFH1V13J
+  asin: B0DFH1V13J
+  prime_eligible: True
+  rating: 4.9
+  review_count: 651
+
+Item 3:
+  title: Wireless Bluetooth Speaker for Bedroom, 48 Color Changing Bedside Lamp with 12/24H Digital, Night Li...
+  price: $35.99$35.99
+  url: https://www.amazon.com/dp/B0DCK5GVP3
+  asin: B0DCK5GVP3
+  prime_eligible: True
+  rating: 5.0
+  review_count: 62
+
+
+=== RUNNING TEST CASE: Filtered Product Search ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon for: wireless earbuds
+INFO:src.react_agent.amazon_connection.main:Searching for: wireless earbuds
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=wireless+earbuds
+INFO:src.react_agent.amazon_connection.main:Waiting 5.63s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 28 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: wireless earbuds
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'price_min': '50', 'price_max': '150', 'prime_only': True, 'brand': ['Apple', 'Sony', 'Samsung'], 'min_rating': 4, 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'price_min': '50', 'price_max': '150', 'prime_only': True, 'brand': ['Apple', 'Sony', 'Samsung'], 'min_rating': 4, 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=wireless+earbuds&s=review-rank&rh=p_36:5000-15000,p_85:2470955011,p_89:Apple|Sony|Samsung,p_72:1248885011
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=wireless+earbuds&s=review-rank&rh=p_36:5000-15000,p_85:2470955011,p_89:Apple|Sony|Samsung,p_72:1248885011
+INFO:src.react_agent.amazon_connection.main:Waiting 5.74s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 17 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 3 products for query: wireless earbuds
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Filtered Product Search:
+Found 3 items
+
+Item 1:
+  title: Apple AirPods (3rd Generation) Wireless Earbuds with MagSafe Charging Case. Spatial Audio, Sweat and...
+  price: $149.00$149.00
+  url: https://www.amazon.com/dp/B0D1XD5FC3
+  asin: B0D1XD5FC3
+  prime_eligible: False
+  rating: 5.0
+  review_count: 19
+
+Item 2:
+  title: Apple AirPods (3rd Generation) Wireless Earbuds with MagSafe Charging Case. Spatial Audio, Sweat and...
+  price: $149.00$149.00
+  url: https://www.amazon.com/dp/B09JQL3NWT
+  asin: B09JQL3NWT
+  prime_eligible: False
+  rating: 4.6
+  review_count: 41522
+
+Item 3:
+  title: Samsung Galaxy Buds True Wireless Earbuds (Wireless Charging Case Included) - Tuned by AKG - Bulk Pa...
+  price: N/A
+  url: https://www.amazon.com/dp/B08JRYCYT4
+  asin: B08JRYCYT4
+  prime_eligible: False
+  rating: 4.6
+  review_count: 1199
+
+
+=== RUNNING TEST CASE: Find Deals in Electronics ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon deals for: electronics
+INFO:src.react_agent.amazon_connection.main:Searching for: electronics
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=electronics
+INFO:src.react_agent.amazon_connection.main:Waiting 6.17s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 22 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: electronics
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'deals': True, 'discount_only': True, 'category': 'electronics', 'prime_only': True, 'sort_by': 'price-asc', 'price_max': '100', 'min_rating': 4}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'deals': True, 'discount_only': True, 'category': 'electronics', 'prime_only': True, 'sort_by': 'price-asc', 'price_max': '100', 'min_rating': 4}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=electronics&s=price-asc-rank&rh=p_36:-10000,p_85:2470955011,p_72:1248885011,p_n_deal_type:23566065011,p_n_deal_type:23566065011
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=electronics&s=price-asc-rank&rh=p_36:-10000,p_85:2470955011,p_72:1248885011,p_n_deal_type:23566065011,p_n_deal_type:23566065011
+INFO:src.react_agent.amazon_connection.main:Waiting 4.06s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 19 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 3 deals in category: electronics
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Find Deals in Electronics:
+Found 3 items
+
+Item 1:
+  title: Klein Tools 13105 Bit T8, T15 Tamperproof TORX Electronics
+  price: $2.68$2.68
+  url: https://www.amazon.com/dp/B07CSCH66G
+  prime_eligible: True
+  deal_type: Discount/Deal
+  rating: 4.7
+
+Item 2:
+  title: coadipress Game Handle Earrings for Women Unique Cartoon Anime Electronic Video Game Dangle Drop Gam...
+  price: $2.99$2.99
+  url: https://www.amazon.com/dp/B0BZNSFW7V
+  prime_eligible: True
+  deal_type: Discount/Deal
+  rating: 4.6
+
+Item 3:
+  title: Cleaner Kit for Airpods, Cleaning Pen for airpods pro, Earbud Cleaning Tool, Electronics Cleaner kit...
+  price: N/A
+  url: https://www.amazon.com/dp/B09SWC23ZZ
+  prime_eligible: True
+  deal_type: Discount/Deal
+  rating: 4.4
+
+
+=== RUNNING TEST CASE: Find Bestsellers in Books ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Finding bestsellers in category: books
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon bestsellers for: books
+INFO:src.react_agent.amazon_connection.main:Searching for: best books
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=best+books
+INFO:src.react_agent.amazon_connection.main:Waiting 3.00s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 66 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: best books
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'category': 'books', 'prime_only': True, 'sort_by': 'review-rank', 'min_rating': 4}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'category': 'books', 'prime_only': True, 'sort_by': 'review-rank', 'min_rating': 4}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=best+books&s=review-rank&rh=p_85:2470955011,p_72:1248885011
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=best+books&s=review-rank&rh=p_85:2470955011,p_72:1248885011
+INFO:src.react_agent.amazon_connection.main:Waiting 4.16s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 53 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 3 bestsellers in category: books
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Find Bestsellers in Books:
+Found 3 items
+
+Item 1:
+  title: The Bob's Burgers Burger Book: Real Recipes for Joke Burgers
+  price: $23.50$23.50
+  url: https://www.amazon.com/dp/0789331144
+  rating: 4.9
+  prime_eligible: True
+  bestseller_rank: #1 in books
+
+Item 2:
+  title: The Dark Crystal Bestiary: The Definitive Guide to the Creatures of Thra (The Dark Crystal: Age of R...
+  price: $16.49$16.49
+  url: https://www.amazon.com/dp/1683838211
+  rating: 4.9
+  prime_eligible: True
+  bestseller_rank: #2 in books
+
+Item 3:
+  title: Sara, Book 2: Solomon's Fine Featherless Friends (Sara, 2)
+  price: $19.99$19.99
+  url: https://www.amazon.com/dp/1401911595
+  rating: 4.9
+  prime_eligible: True
+  bestseller_rank: #3 in books
+
+
+=== RUNNING TEST CASE: Get Product Details ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Getting details for product: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Extracting details for product: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Waiting 7.40s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Extracted details for product: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+INFO:src.react_agent.amazon_connection.main:Extracting reviews for product: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Waiting 3.35s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Extracted 3 reviews for product
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Get Product Details:
+title: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+price: $34.50
+rating: 4.6
+prime_eligible: True
+availability: In Stock
+description: The JBL Go 2 is a full-featured waterproof Bluetooth speaker to take with you everywhere. Wirelessly...
+features:
+  - Wireless Bluetooth Streaming.Waterproof : Yes
+  - 5 hours of playtime
+  - IPX7 waterproof
+specifications: {'Material': 'Rubberized ABS & Metal Grill', 'Model Name': 'JBL GO 2 - Black', 'Speaker Type': 'Portable', 'Special Feature': 'Waterproof, Noise Cancelling, Built-In Microphone', 'Recommended Uses For Product': 'For Smartphones or Tablets', 'Compatible Devices': 'Tablet, Smartphone', 'Unit Count': '1.0 Count', 'Controller Type': 'Battery Powered', 'Color': 'Black', 'Battery Life': '5 Hours', 'Included Components': 'Micro USB Cable, Speaker, Quick Start Guide', 'Product Dimensions': '1.3"D x 3.4"W x 2.8"H', 'Item Weight': '6.6 ounces', 'Is Waterproof': 'True', 'Charging Time': '5 Hours', 'Warranty Type': 'Limited', 'Number of Items': '1', 'Control Method': 'App', 'Wireless Communication Technology': 'Bluetooth', 'Speaker Size': '10.69 Centimeters', 'Power Source': 'Battery Powered', 'Woofer Diameter': '10.69 Centimeters', 'Water Resistance Level': 'Waterproof', 'Number of Batteries': '1 Lithium Metal batteries required. (included)', 'Audio Driver Type': 'Dynamic Driver', 'Bluetooth Range': '10 Meters', 'Number of Microphones': '1', 'Subwoofer Connectivity Technology': 'Wireless', 'Connectivity Protocol': 'Bluetooth', 'Includes MP3 player?': 'No', 'Specific Uses For Product': '[INF] Indeterminable from the given data, but with reasonable assumptions: poolside entertainment, outdoor activities, or travel', 'UPC': '050036354288', 'Style': 'Speaker', 'Global Trade Identification Number': '00050036354288', 'Manufacturer': 'JBL', 'ASIN': 'B07QDPRYYD', 'Item model number': 'JBLGO2BLKAM', 'Batteries': '1 Lithium Metal batteries required. (included)', 'Customer Reviews': '4.6             4.6 out of 5 stars         \n\n                          56,922 ratings     \n                    \n                    var dpAcrHasRegisteredArcLinkClickAction;\n                    P.when(\'A\', \'ready\').execute(function(A) {\n                        if (dpAcrHasRegisteredArcLinkClickAction !== true) {\n                            dpAcrHasRegisteredArcLinkClickAction = true;\n                            A.declarative(\n                                \'acrLink-click-metrics\', \'click\',\n                                { "allowLinkDefault": true },\n                                function (event) {\n                                    if (window.ue) {\n                                        ue.count("acrLinkClickCount", (ue.count("acrLinkClickCount") || 0) + 1);\n                                    }\n                                }\n                            );\n                        }\n                    });\n                \n                 \n            P.when(\'A\', \'cf\').execute(function(A) {\n                A.declarative(\'acrStarsLink-click-metrics\', \'click\', { "allowLinkDefault" : true },  function(event){\n                    if(window.ue) {\n                        ue.count("acrStarsLinkWithPopoverClickCount", (ue.count("acrStarsLinkWithPopoverClickCount") || 0) + 1);\n                    }\n                });\n            });\n        \n\n           \n       4.6 out of 5 stars', 'Best Sellers Rank': '#3,046 in Electronics (See Top 100 in Electronics)   #103 in Portable Bluetooth Speakers', 'Is Discontinued By Manufacturer': 'No', 'Date First Available': 'June 30, 2019', 'Department': 'unisex', 'Country of Origin': 'China'}
+reviews: 3 reviews
+  Review 1: 5.0 - 5.0 out of 5 stars
+
+
+
+
+
+
+
+
+
+    JBL GO2 - Massive value! small, will built, good sound quaility and volume range, long run time
+
+
+  Review 2: 5.0 - 5.0 out of 5 stars
+
+
+
+
+
+
+
+
+
+    Small speaker, great sound!
+
+
+
+
+=== RUNNING TEST CASE: Get Product Reviews ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Getting reviews for product: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Extracting reviews for product: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Waiting 3.75s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Extracted 3 reviews for product
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Get Product Reviews:
+product_title: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+overall_rating: 4.6 out of 5
+total_reviews: 3
+reviews: 3 reviews
+  Review 1: 5.0 - 5.0 out of 5 stars
+
+
+
+
+
+
+
+
+
+    JBL GO2 - Massive value! small, will built, good sound quaility and volume range, long run time
+
+
+  Review 2: 5.0 - 5.0 out of 5 stars
+
+
+
+
+
+
+
+
+
+    Small speaker, great sound!
+
+
+
+
+=== RUNNING TEST CASE: Compare Multiple Products ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Comparing products
+INFO:src.react_agent.amazon_connection.main:Extracting details for product: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/dp/B07QDPRYYD
+INFO:src.react_agent.amazon_connection.main:Waiting 5.95s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Extracting details for product: https://www.amazon.com/dp/B07XJ8C8F5
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/dp/B07XJ8C8F5
+INFO:src.react_agent.amazon_connection.main:Waiting 5.92s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Extracted details for product: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+INFO:src.react_agent.amazon_connection.main:Extracted details for product: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Compare Multiple Products:
+products: 2 products
+  Product 1: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+  Product 2: JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black
+comparison_summary: {'price_range': '$34.50 - $34.50', 'highest_rated': 'JBL GO2 - Waterproof Ultra-Portable Bluetooth Speaker - Black', 'total_compared': 2}
+
+
+=== RUNNING TEST CASE: Search with Feature Filtering ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon for: headphones
+INFO:src.react_agent.amazon_connection.main:Searching for: headphones
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=headphones
+INFO:src.react_agent.amazon_connection.main:Waiting 2.68s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 27 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: headphones
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'price_min': '50', 'price_max': '200', 'prime_only': True, 'features': ['noise cancelling', 'wireless', 'bluetooth'], 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'price_min': '50', 'price_max': '200', 'prime_only': True, 'features': ['noise cancelling', 'wireless', 'bluetooth'], 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=headphones&s=review-rank&rh=p_36:5000-20000,p_85:2470955011,p_n_feature_browse-bin:noise+cancelling,p_n_feature_browse-bin:wireless,p_n_feature_browse-bin:bluetooth
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=headphones&s=review-rank&rh=p_36:5000-20000,p_85:2470955011,p_n_feature_browse-bin:noise+cancelling,p_n_feature_browse-bin:wireless,p_n_feature_browse-bin:bluetooth
+INFO:src.react_agent.amazon_connection.main:Waiting 6.29s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 1 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 0 products for query: headphones
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Search with Feature Filtering:
+Found 0 items
+
+
+=== RUNNING TEST CASE: Search in Specific Department ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon for: coffee maker
+INFO:src.react_agent.amazon_connection.main:Searching for: coffee maker
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=coffee+maker
+INFO:src.react_agent.amazon_connection.main:Waiting 3.32s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 71 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: coffee maker
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'price_max': '100', 'prime_only': True, 'department': 'Kitchen & Dining', 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'price_max': '100', 'prime_only': True, 'department': 'Kitchen & Dining', 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=coffee+maker&s=review-rank&rh=p_36:-10000,p_85:2470955011,n:Kitchen+&+Dining
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=coffee+maker&s=review-rank&rh=p_36:-10000,p_85:2470955011,n:Kitchen+&+Dining
+INFO:src.react_agent.amazon_connection.main:Waiting 7.49s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 53 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 3 products for query: coffee maker
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Search in Specific Department:
+Found 3 items
+
+Item 1:
+  title: Chemex Pour-Over Glass Coffeemaker - Classic Series - 6-Cup - Exclusive Packaging
+  price: $47.03$47.03
+  url: https://www.amazon.com/dp/B0000YWF5E
+  asin: B0000YWF5E
+  prime_eligible: True
+  rating: 4.8
+  review_count: 6579
+
+Item 2:
+  title: Chemex Pour-Over Glass Coffeemaker - Classic Series - 10-Cup - Exclusive Packaging
+  price: $50.83$50.83
+  url: https://www.amazon.com/dp/B000NTMHRW
+  asin: B000NTMHRW
+  prime_eligible: True
+  rating: 4.8
+  review_count: 2874
+
+Item 3:
+  title: BAGSPRITE Coffee Maker Travel Bag Compatible with Keurig K-Express Coffee Maker, K-Iced Single Serve...
+  price: $36.99$36.99
+  url: https://www.amazon.com/dp/B0CC996HJH
+  asin: B0CC996HJH
+  prime_eligible: True
+  rating: 4.8
+  review_count: 681
+
+
+=== RUNNING TEST CASE: Search by Product Condition ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon for: iphone
+INFO:src.react_agent.amazon_connection.main:Searching for: iphone
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=iphone
+INFO:src.react_agent.amazon_connection.main:Waiting 2.63s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 19 product cards
+INFO:src.react_agent.amazon_connection.main:Found 18 products for query: iphone
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'price_max': '400', 'condition': 'renewed', 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'price_max': '400', 'condition': 'renewed', 'sort_by': 'review-rank'}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=iphone&s=review-rank&rh=p_36:-40000,p_n_condition-type:16349437011
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=iphone&s=review-rank&rh=p_36:-40000,p_n_condition-type:16349437011
+INFO:src.react_agent.amazon_connection.main:Waiting 3.05s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 1 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 0 products for query: iphone
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Search by Product Condition:
+Found 0 items
+
+
+=== RUNNING TEST CASE: Find Kitchen Deals ===
+INFO:src.react_agent.amazon_connection.browser_management:Getting browser from pool
+INFO:src.react_agent.amazon_connection.tool:Searching Amazon deals for: kitchen
+INFO:src.react_agent.amazon_connection.main:Searching for: kitchen
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=kitchen
+INFO:src.react_agent.amazon_connection.main:Waiting 3.81s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 66 product cards
+INFO:src.react_agent.amazon_connection.main:Found 20 products for query: kitchen
+INFO:src.react_agent.amazon_connection.tool:Applying filters: {'deals': True, 'discount_only': True, 'category': 'kitchen', 'prime_only': True, 'sort_by': 'price-asc', 'price_max': '50', 'min_rating': 4}
+INFO:src.react_agent.amazon_connection.main:Applying filters: {'deals': True, 'discount_only': True, 'category': 'kitchen', 'prime_only': True, 'sort_by': 'price-asc', 'price_max': '50', 'min_rating': 4}
+INFO:src.react_agent.amazon_connection.main:Filter URL: https://www.amazon.com/s?k=kitchen&s=price-asc-rank&rh=p_36:-5000,p_85:2470955011,p_72:1248885011,p_n_deal_type:23566065011,p_n_deal_type:23566065011
+INFO:src.react_agent.amazon_connection.main:Stealth visiting: https://www.amazon.com/s?k=kitchen&s=price-asc-rank&rh=p_36:-5000,p_85:2470955011,p_72:1248885011,p_n_deal_type:23566065011,p_n_deal_type:23566065011
+INFO:src.react_agent.amazon_connection.main:Waiting 5.32s before navigation attempt 1
+INFO:src.react_agent.amazon_connection.main:Found 53 product cards
+INFO:src.react_agent.amazon_connection.tool:Found 3 deals in category: kitchen
+INFO:src.react_agent.amazon_connection.browser_management:Returning browser to pool
+
+Results for Find Kitchen Deals:
+Found 3 items
+
+Item 1:
+  title: Home Hero 2 Pcs Grapefruit Knife with Sheath - High Carbon Stainless Steel Chopping Knife with Ergon...
+  price: $1.99$1.99
+  url: https://www.amazon.com/dp/B0BY38LG4S
+  prime_eligible: True
+  deal_type: Discount/Deal
+  rating: 4.1
+
+Item 2:
+  title: 5-in-1 Kitchen bathroom shelf Pot Lid Organizer, Saving Cup Lid Organizer for Tumbler Lids, Self-Adh...
+  price: $2.64$2.64
+  url: https://www.amazon.com/dp/B0D26HJ4J9
+  prime_eligible: True
+  deal_type: Discount/Deal
+  rating: 4.3
+
+Item 3:
+  title: 2PCS Bowl Scraper, Little Cook Bench Dough Bread Scraper, Premium Plastic Dough Cutter, Multipurpose...
+  price: $2.99$2.99
+  url: https://www.amazon.com/dp/B0CW2GXK76
+  prime_eligible: True
+  deal_type: Discount/Deal
+  rating: 4.5
