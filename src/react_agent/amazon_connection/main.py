@@ -30,28 +30,25 @@ class AmazonConnection(Browser):
 
     async def search_products(self, query: str, max_results: int = 20) -> List[Dict[str, Any]]:
         """
-        Search for products on Amazon.
-
-        Args:
-            query: The search query
-            max_results: Maximum number of results to return
-
-        Returns:
-            List of product dictionaries
+        Search for products on Amazon with enhanced stealth measures.
         """
         logger.info(f"Searching for: {query}")
 
         # Construct search URL
         search_url = self.build_search_url(query)
 
-        # Navigate to search page
-        await self._navigate_with_retry(search_url)
+        # Use stealth navigation instead of regular navigation
+        success = await self.stealth_visit(search_url)
+
+        if not success:
+            logger.warning("Failed to navigate to search page stealthily")
+            return []
 
         # Wait for search results to load
         await self._wait_for_element("div.s-result-list")
 
         # Add a delay to ensure all content is loaded
-        await asyncio.sleep(3)
+        await asyncio.sleep(random.uniform(2, 4))
 
         # Extract product information
         products = await self._extract_search_results(max_results)
@@ -253,11 +250,15 @@ class AmazonConnection(Browser):
         # Debug log
         logger.info(f"Filter URL: {filter_url}")
 
-        # Navigate to filter URL
-        await self._navigate_with_retry(filter_url)
+        # Use stealth navigation for the filter URL
+        success = await self.stealth_visit(filter_url)
+
+        if not success:
+            logger.warning("Failed to navigate to filtered results page stealthily")
+            return []
 
         # Wait for results to load
-        await asyncio.sleep(3)
+        await asyncio.sleep(random.uniform(2, 4))
 
         # Extract filtered results
         return await self._extract_search_results(20)
@@ -306,8 +307,12 @@ class AmazonConnection(Browser):
         """
         logger.info(f"Getting details for product: {product_url}")
 
-        # Navigate to product page
-        await self._navigate_with_retry(product_url)
+        # Use stealth navigation instead of regular navigation
+        success = await self.stealth_visit(product_url)
+
+        if not success:
+            logger.warning("Failed to navigate to product page stealthily")
+            return {}
 
         # Wait for product page to load
         await self._wait_for_element("#productTitle")
@@ -426,8 +431,12 @@ class AmazonConnection(Browser):
         logger.info(f"Getting reviews for product: {product_url}")
 
         try:
-            # Navigate to product page instead of reviews page
-            await self._navigate_with_retry(product_url)
+            # Use stealth navigation instead of regular navigation
+            success = await self.stealth_visit(product_url)
+
+            if not success:
+                logger.warning("Failed to navigate to product page stealthily for reviews")
+                return []
 
             # Wait for product page to load
             await self._wait_for_element("#productTitle")
@@ -548,7 +557,13 @@ class AmazonConnection(Browser):
 
         # Navigate to reviews page
         reviews_url = f"https://www.amazon.com/product-reviews/{asin}/" if asin else f"{product_url.split('?')[0]}/reviews"
-        await self._navigate_with_retry(reviews_url)
+
+        # Use stealth navigation
+        success = await self.stealth_visit(reviews_url)
+
+        if not success:
+            logger.warning("Failed to navigate to reviews page stealthily")
+            return {}
 
         # Wait for reviews to load
         await self._wait_for_element("#cm_cr-review_list")
@@ -809,3 +824,125 @@ class AmazonConnection(Browser):
                 logger.debug(f"Error checking login selector {selector}: {e}")
 
         return False
+
+    async def stealth_visit(self, url, max_retries=3):
+        """
+        Visit a URL with enhanced stealth measures to avoid detection.
+        """
+        logger.info(f"Stealth visiting: {url}")
+
+        for attempt in range(max_retries):
+            try:
+                # Add random delay before navigation
+                await asyncio.sleep(random.uniform(2, 5))
+
+                # Simulate human-like behavior before navigation
+                await self._add_pre_navigation_behavior()
+
+                # Navigate with a more realistic timeout
+                response = await self.page.goto(
+                    url,
+                    wait_until="domcontentloaded",
+                    timeout=30000
+                )
+
+                # Check for 503 or CAPTCHA
+                if response and response.status == 503:
+                    logger.warning(f"503 detected on stealth visit attempt {attempt+1}")
+
+                    # Take screenshot for debugging
+                    timestamp = int(time.time())
+                    screenshot_path = f"amazon_block_{timestamp}.png"
+                    await self.page.screenshot(path=screenshot_path)
+
+                    # Try to rotate proxy if available
+                    if self.proxies and len(self.proxies) > 0:
+                        logger.info("Rotating proxy due to 503 error")
+                        await self.rotate_proxy()
+
+                    # Add increasing delay between retries
+                    if attempt < max_retries - 1:
+                        delay = 5 * (2 ** attempt) * (0.5 + random.random())
+                        logger.info(f"Waiting {delay:.2f}s before retry")
+                        await asyncio.sleep(delay)
+                        continue
+                    return False
+
+                # Check for CAPTCHA after navigation
+                if await self.check_for_captcha():
+                    logger.warning(f"CAPTCHA detected on stealth visit attempt {attempt+1}")
+
+                    # Try to rotate proxy if available
+                    if self.proxies and len(self.proxies) > 0:
+                        logger.info("Rotating proxy due to CAPTCHA")
+                        await self.rotate_proxy()
+
+                    if attempt < max_retries - 1:
+                        delay = 5 * (2 ** attempt) * (0.5 + random.random())
+                        await asyncio.sleep(delay)
+                        continue
+                    return False
+
+                # Add post-navigation human-like behavior
+                await self._add_post_navigation_behavior()
+
+                return True
+
+            except Exception as e:
+                logger.warning(f"Error during stealth visit attempt {attempt+1}: {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(5 * (attempt + 1))
+                    continue
+                return False
+
+        return False
+
+    async def _add_pre_navigation_behavior(self):
+        """Add human-like behavior before navigation to avoid detection."""
+        try:
+            # Random mouse movements
+            for _ in range(random.randint(2, 5)):
+                x = random.randint(100, 800)
+                y = random.randint(100, 600)
+                await self.page.mouse.move(x, y)
+                await asyncio.sleep(random.uniform(0.1, 0.3))
+
+            # Sometimes click on a random spot
+            if random.random() < 0.3:
+                x = random.randint(100, 800)
+                y = random.randint(100, 600)
+                await self.page.mouse.click(x, y)
+
+            # Sometimes resize window
+            if random.random() < 0.2:
+                width = random.randint(1000, 1200)
+                height = random.randint(800, 900)
+                await self.page.set_viewport_size({"width": width, "height": height})
+        except Exception as e:
+            logger.debug(f"Error in pre-navigation behavior: {e}")
+
+    async def _add_post_navigation_behavior(self):
+        """Add human-like behavior after navigation to avoid detection."""
+        try:
+            # Wait a random time after page load
+            await asyncio.sleep(random.uniform(1, 3))
+
+            # Random scrolling
+            for _ in range(random.randint(2, 5)):
+                scroll_y = random.randint(100, 500)
+                await self.page.evaluate(f"window.scrollBy(0, {scroll_y})")
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+
+            # Sometimes scroll back up
+            if random.random() < 0.5:
+                await self.page.evaluate("window.scrollTo(0, 0)")
+                await asyncio.sleep(random.uniform(0.5, 1))
+
+            # Random mouse movements
+            for _ in range(random.randint(3, 7)):
+                x = random.randint(100, 800)
+                y = random.randint(100, 600)
+                await self.page.mouse.move(x, y)
+                await asyncio.sleep(random.uniform(0.2, 0.5))
+        except Exception as e:
+            logger.debug(f"Error in post-navigation behavior: {e}")

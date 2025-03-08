@@ -133,7 +133,7 @@ class Browser:
             self.current_proxy_index += 1
 
         if self.proxy:
-            logger.info(f"Using proxy: {self.proxy}")
+            logger.info(f"Using proxy: {self.proxy.split('@')[-1]}")  # Log only the host part for security
             proxy_settings = {"server": self.proxy}
 
         # Create a context with the selected user agent and realistic viewport
@@ -384,6 +384,11 @@ class BrowserPool:
             # Create new browser if under limit
             if len(self.browsers) < self.max_browsers:
                 try:
+                    if proxies and len(proxies) > 0:
+                        # Rotate through proxies for each new browser
+                        proxy = proxies[random.randint(0, len(proxies)-1)]
+                        logger.info(f"Using proxy: {proxy}")
+
                     browser = AmazonConnection(
                         headless=headless,
                         slow_mo=slow_mo,
